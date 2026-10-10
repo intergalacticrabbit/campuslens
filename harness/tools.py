@@ -122,3 +122,85 @@ def save_note(text: str):
     with NOTES_FILE.open("a", encoding="utf-8") as file:
         file.write(text[:500].replace("\n", " ") + "\n")
     return "Saved the note."
+
+
+# =============================================================================
+# CampusLens Tools (Notice Search, Deadlines & Task Management)
+# =============================================================================
+
+@tool
+def search_campus_notices(keyword: str):
+    """Search stored campus circulars, announcements, and notices by keyword.
+
+    keyword: search query such as exam, hackathon, hostel, mess, or library
+    """
+    import sys
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from task_manager import task_manager
+    results = task_manager.search_notices(keyword)
+    if not results:
+        return f"No campus notices found matching '{keyword}'."
+    lines = [f"Found {len(results)} matching notice(s):"]
+    for i, n in enumerate(results, start=1):
+        lines.append(f"{i}. {n.get('title')} | Category: {n.get('category', 'General')} | Deadline: {n.get('deadline')} | Venue: {n.get('venue')}")
+        if n.get('summary'):
+            lines.append(f"   Summary: {n.get('summary')}")
+        if n.get('action_items'):
+            lines.append(f"   Actions: {', '.join(n.get('action_items'))}")
+    return "\n".join(lines)
+
+
+@tool
+def get_pending_deadlines():
+    """Get the closest upcoming campus deadlines and tasks."""
+    import sys
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from task_manager import task_manager
+    deadlines = task_manager.get_upcoming_deadlines(limit=5)
+    if not deadlines:
+        return "No upcoming pending deadlines found."
+    lines = ["Upcoming Campus Deadlines:"]
+    for i, t in enumerate(deadlines, start=1):
+        lines.append(f"{i}. [{t.get('priority', 'Medium')}] {t.get('title')} — Due: {t.get('deadline')}")
+    return "\n".join(lines)
+
+
+@tool
+def add_campus_task(title: str, deadline: str = "", priority: str = "Medium"):
+    """Create a new student task or reminder.
+
+    title: what the student needs to do
+    deadline: date in YYYY-MM-DD format if known
+    priority: priority level such as High, Medium, or Low
+    """
+    import sys
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from task_manager import task_manager
+    task = task_manager.add_task(title=title, deadline=deadline, priority=priority)
+    return f"Created task: '{task['title']}' (Due: {task.get('deadline') or 'No date'}, ID: {task['id']})"
+
+
+@tool
+def complete_campus_task(task_id: str):
+    """Mark an existing campus task as completed.
+
+    task_id: the ID of the task to mark as complete
+    """
+    import sys
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from task_manager import task_manager
+    success, msg = task_manager.toggle_task(task_id)
+    return msg
+

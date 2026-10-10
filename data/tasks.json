@@ -1,0 +1,112 @@
+[
+  {
+    "id": "task_93b68a95",
+    "notice_id": "notice_952d49f2",
+    "notice_title": "OpenLake × MLH Build with Gemma 4 Hackathon Submission",
+    "title": "Push code and LICENSE to public GitHub repository",
+    "deadline": "2026-10-12",
+    "priority": "Medium",
+    "completed": false,
+    "completed_at": null,
+    "created_at": "2026-10-10T14:00:33.748378"
+  },
+  {
+    "id": "task_3a19053a",
+    "notice_id": "notice_952d49f2",
+    "notice_title": "OpenLake × MLH Build with Gemma 4 Hackathon Submission",
+    "title": "Add Agent Skill file (SKILL.md) and specify gemma-4-26b-a4b-it",
+    "deadline": "2026-10-12",
+    "priority": "Medium",
+    "completed": false,
+    "completed_at": null,
+    "created_at": "2026-10-10T14:00:33.748802"
+  },
+  {
+    "id": "task_64193cba",
+    "notice_id": "notice_952d49f2",
+    "notice_title": "OpenLake × MLH Build with Gemma 4 Hackathon Submission",
+    "title": "Submit project link on Organizer HQ portal",
+    "deadline": "2026-10-12",
+    "priority": "High",
+    "completed": false,
+    "completed_at": null,
+    "created_at": "2026-10-10T14:00:33.749225"
+  },
+  {
+    "id": "task_180fde7e",
+    "notice_id": "notice_3d49ba32",
+    "notice_title": "Monthly Hostel Mess Rebate Application - Oct Cycle",
+    "title": "Download rebate claim form from ERP portal",
+    "deadline": "2026-10-14",
+    "priority": "Medium",
+    "completed": false,
+    "completed_at": null,
+    "created_at": "2026-10-10T14:00:33.750384"
+  },
+  {
+    "id": "task_7e7723f0",
+    "notice_id": "notice_3d49ba32",
+    "notice_title": "Monthly Hostel Mess Rebate Application - Oct Cycle",
+    "title": "Get caretaker signature and submit to Mess Supervisor",
+    "deadline": "2026-10-14",
+    "priority": "High",
+    "completed": false,
+    "completed_at": null,
+    "created_at": "2026-10-10T14:00:33.750876"
+  },
+  {
+    "id": "task_1a6d3920",
+    "notice_id": "notice_84863b69",
+    "notice_title": "Autumn Semester Mid-Term Examination Hall Ticket & Schedule",
+    "title": "Download and print hall ticket from AIMS portal",
+    "deadline": "2026-10-17",
+    "priority": "Medium",
+    "completed": false,
+    "completed_at": null,
+    "created_at": "2026-10-10T14:00:33.751966"
+  },
+  {
+    "id": "task_849f1fe4",
+    "notice_id": "notice_84863b69",
+    "notice_title": "Autumn Semester Mid-Term Examination Hall Ticket & Schedule",
+    "title": "Obtain Faculty Advisor signature before Friday",
+    "deadline": "2026-10-17",
+    "priority": "Medium",
+    "completed": false,
+    "completed_at": null,
+    "created_at": "2026-10-10T14:00:33.752416"
+  },
+  {
+    "id": "task_fe40048c",
+    "notice_id": "notice_6aac5ff7",
+    "notice_title": "Central Library Book Return & Clearance Notice",
+    "title": "Check issued books on library portal",
+    "deadline": "2026-10-20",
+    "priority": "Medium",
+    "completed": false,
+    "completed_at": null,
+    "created_at": "2026-10-10T14:00:33.753488"
+  },
+  {
+    "id": "task_9a60044b",
+    "notice_id": "notice_6aac5ff7",
+    "notice_title": "Central Library Book Return & Clearance Notice",
+    "title": "Return overdue books or renew online",
+    "deadline": "2026-10-20",
+    "priority": "Medium",
+    "completed": false,
+    "completed_at": null,
+    "created_at": "2026-10-10T14:00:33.753956"
+  },
+  {
+    "id": "task_87d3192d",
+    "notice_id": "notice_174efd2b",
+    "notice_title": "Example College Tech Fest",
+    "title": "Review & act on notice: Example College Tech Fest",
+    "deadline": null,
+    "priority": "Medium",
+    "completed": false,
+    "completed_at": null,
+    "created_at": "2026-10-10T14:23:54.609822"
+  }
+]

@@ -64,6 +64,12 @@ Every line should say PASS. If not, see [docs/TROUBLESHOOTING.md](docs/TROUBLESH
 - **Stuck?** [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md), [docs/CHEATSHEET.md](docs/CHEATSHEET.md), [docs/IDEAS.md](docs/IDEAS.md).
 - **Using an AI coding tool?** Paste [docs/AI_ASSISTANT_PROMPT.md](docs/AI_ASSISTANT_PROMPT.md) into it first.
 
+## Demo & Architecture
+
+![CampusLens Demo](docs/screenshot.png)
+
+CampusLens turns campus notices and circulars into structured deadlines, actionable tasks, and a searchable knowledge base using Google's `gemma-4-26b-a4b-it`.
+
 ## License
 
 MIT. See [LICENSE](LICENSE). Keep this file in your project.
