@@ -241,6 +241,30 @@ def ask_with_image(image_path, prompt, system=None):
     return text
 
 
+
+
+def ask_with_pdf(pdf_path, prompt, system=None):
+    """Ask Gemma about a picture."""
+    image_bytes = Path(pdf_path).read_bytes()
+    key = _cache_key(MODEL, system, prompt, image_bytes)
+    saved = _cache_get(key)
+    if saved is not None:
+        return saved
+
+    def upload_and_ask():
+        client = get_client()
+        my_file = client.files.upload(file=str(pdf_path))  # send the picture to Google
+        return client.models.generate_content(
+            model=MODEL, contents=[my_file, prompt], config=_make_config(system, False)
+        )
+
+    response = _call_api(upload_and_ask)
+    text = _text(response)
+    if response.text:
+        _cache_put(key, text)
+    return text
+
+
 class GemmaChat:
     """A chat that remembers earlier messages."""
 
