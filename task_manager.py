@@ -276,30 +276,37 @@ class NoticeStore:
 class TaskManager:
     """Synchronized adapter providing helper queries for agent tools and CLI."""
 
-    def __init__(self, store: Optional[NoticeStore] = None):
-        self.store = store or NoticeStore()
+    def __init__(self, store: Optional[NoticeStore] = None, engine: Any = None):
+        if store is not None:
+            self.store = store
+        elif engine is not None and hasattr(engine, "data_dir"):
+            self.store = NoticeStore(path=Path(engine.data_dir) / "campus_data.json")
+        else:
+            self.store = NoticeStore()
 
     def ingest_extracted_notice(self, raw_data: Dict[str, Any]) -> Tuple[bool, str, Dict[str, Any]]:
         try:
-            # Map action_items -> actions if present
             payload = dict(raw_data)
             if "action_items" in payload and "actions" not in payload:
                 payload["actions"] = payload["action_items"]
             saved = self.store.save_notice(payload)
             return True, f"Successfully saved notice with {len(saved.get('actions', []))} action(s).", saved
         except DuplicateNoticeError as e:
-            return True, str(e), {}
+            return True, f"Notice already exists ('{raw_data.get('title')}'). Skipped duplicate creation.", {}
         except NoticeDataError as e:
             return False, str(e), {}
+
+    def get_all_notices(self) -> List[Dict[str, Any]]:
+        return self.store.list_notices()
 
     def get_all_tasks(self, filter_status: str = "all") -> List[Dict[str, Any]]:
         status = "all" if filter_status == "all" else ("open" if filter_status == "pending" else "done")
         tasks = self.store.list_tasks(status=status)
         for t in tasks:
-            # Compatibility bridge for UI attributes
             t["title"] = t.get("text", "")
             t["deadline"] = t.get("notice", {}).get("deadline")
         return tasks
+
 
     def toggle_task(self, task_id: str) -> Tuple[bool, str]:
         try:
