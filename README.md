@@ -9,10 +9,12 @@
 ## What it does
 
 - A custom React dashboard with an overview, notice scanner, task center, and saved-notice library.
+- Dashboard summary cards link to their related lists; saved notices open a detail view with a shortcut to related tasks.
 - Image upload with side-by-side source preview and editable extraction results.
 - Extracts title, deadline, venue, eligibility, and action items without inventing missing details.
 - Persists notices and tasks in a local JSON file.
 - Searches notices and tasks, filters tasks by status, and tracks completion.
+- Includes an in-app quick guide, API connection check, workspace privacy details, and a saved reduced-motion preference.
 - Uses only `gemma-4-26b-a4b-it` for model inference. Validation, persistence, search, and task operations are Python code.
 
 ## Stack
