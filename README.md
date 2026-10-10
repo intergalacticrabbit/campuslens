@@ -1,25 +1,30 @@
 # CampusLens
 
-CampusLens turns campus notice images into clear, editable information and useful follow-up tasks. Upload a notice, let **Gemma 4 (`gemma-4-26b-a4b-it`) through the Gemini API** extract its title, deadline, venue, eligibility, and actions, then review and save the result in a local dashboard.
+**CampusLens turns campus notices into clear deadlines and next steps.** Upload a notice photo, review the facts Gemini's required Gemma 4 model extracts, then save its actionable items as searchable tasks.
 
-## Features
+![CampusLens overview dashboard](./campuslens-dashboard.png)
 
-- A calm, single-workspace Gradio dashboard with separate Overview, Analyze notice, and My tasks views.
-- Image upload with structured notice analysis; missing details are left blank instead of guessed.
-- Editable extracted fields, deadline/venue/eligibility display, and action cards.
-- Persistent local JSON storage for notices and tasks.
-- Task search by action, notice title, or venue; open/completed filters and completion tracking.
-- Validation for malformed data, duplicate notices/actions, and invalid stored JSON.
-- The local dashboard binds only to `127.0.0.1`.
+![CampusLens notice scanner](./campuslens-scanner.png)
 
-## Requirements
+## What it does
 
-- Python 3.10 or newer.
-- A Gemini API key from [Google AI Studio](https://aistudio.google.com).
+- A custom React dashboard with an overview, notice scanner, task center, and saved-notice library.
+- Image upload with side-by-side source preview and editable extraction results.
+- Extracts title, deadline, venue, eligibility, and action items without inventing missing details.
+- Persists notices and tasks in a local JSON file.
+- Searches notices and tasks, filters tasks by status, and tracks completion.
+- Uses only `gemma-4-26b-a4b-it` for model inference. Validation, persistence, search, and task operations are Python code.
 
-## Setup on Windows (PowerShell)
+## Stack
 
-Run these commands from the repository folder:
+- React, TypeScript, Vite, and custom responsive CSS.
+- FastAPI local API.
+- Python JSON task manager.
+- Google Gemini API with Gemma 4 `gemma-4-26b-a4b-it`.
+
+## Setup (Windows PowerShell)
+
+From the repository root:
 
 ```powershell
 py -m venv .venv
@@ -29,48 +34,74 @@ Copy-Item .env.example .env
 notepad .env
 ```
 
-Paste your own key after `GEMINI_API_KEY=` in `.env`. Keep this file private; `.env` is excluded by `.gitignore`.
+Add your own `GEMINI_API_KEY` to `.env`. Never commit that file or share the key.
 
-## Run the app
+Install the frontend dependencies in a second terminal:
 
 ```powershell
-python app.py
+cd frontend
+npm install
 ```
 
-Open [http://127.0.0.1:7860](http://127.0.0.1:7860). Analyze a clear notice image, review and correct the extracted details, then save the notice and its action tasks. Use **My tasks** to search/filter tasks and mark one complete.
+## Run locally in development
 
-`app.py` calls `gemma_client.ask_with_image(...)`; `gemma_client.py` uses only `gemma-4-26b-a4b-it` through Google's Gemini API. Never add an API key to source code or a commit.
+Terminal 1, from the repository root:
 
-## Dashboard preview
+```powershell
+python -m uvicorn server:app --host 127.0.0.1 --port 8000 --reload
+```
 
-![CampusLens dashboard](./campuslens-dashboard.png)
+Terminal 2:
 
-## Data and privacy
+```powershell
+cd frontend
+npm run dev
+```
 
-Notices and tasks are stored in `data/campus_data.json` on this computer. The file is created the first time a notice is saved and is ignored by Git. Avoid saving sensitive personal information. Notice images are sent to Google's Gemini API for analysis when you select **Analyze notice**.
+Open [http://127.0.0.1:5173](http://127.0.0.1:5173). Vite forwards `/api` requests to the local FastAPI service.
+
+## Build and serve the production frontend
+
+```powershell
+cd frontend
+npm run build
+cd ..
+python -m uvicorn server:app --host 127.0.0.1 --port 8000
+```
+
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000). FastAPI serves the built React app and API from the same local origin.
 
 ## Tests
 
-Tests do not make a Gemini API call:
+Python tests (no key or live model request required):
 
 ```powershell
 python -m pip install -r requirements-dev.txt
 python -m pytest -q
 ```
 
-They cover JSON response parsing, missing/invalid data, duplicate handling, persistence, search, task completion, and UI callbacks with the API mocked.
+Frontend production build:
+
+```powershell
+cd frontend
+npm run build
+```
+
+## Data and privacy
+
+Saved notices and tasks are stored at `data/campus_data.json`. The JSON file is ignored by Git. Uploaded images are temporarily written for model analysis and deleted after the request; saving a notice does not retain the original image. The app listens on `127.0.0.1` by default. Notice images are sent to Google's Gemini API when you request analysis.
 
 ## Team branches
 
 | Member | Branch | Focus |
 |---|---|---|
 | 1 | `feature/gemma-ai` | Image extraction |
-| 2 | `feature/ui` | Gradio interface |
+| 2 | `feature/ui` | React interface |
 | 3 | `feature/tasks` | Persistent tasks |
 | 4 | `feature/tools` | Agent tools |
 | 5 | `feature/testing-docs` | Tests and submission documentation |
 
-This integrated frontend/backend work is on `feature/ui`. Coordinate shared files and schema changes before merging parallel contributions.
+The React frontend is served by Vite during development. The stable Python interfaces are in `server.py` and `task_manager.py`; coordinate schema changes before merging parallel work.
 
 ## License
 

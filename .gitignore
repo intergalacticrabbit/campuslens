@@ -6,3 +6,6 @@ notes/
 wheelhouse/
 .pytest_cache/
 data/campus_data.json
+frontend/node_modules/
+frontend/dist/
+frontend/*.tsbuildinfo
