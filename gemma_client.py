@@ -46,7 +46,7 @@ def _number(name, default):
 
 
 # Settings. You can change any of them in your .env file.
-MODEL = os.environ.get("GEMMA_MODEL") or "gemma-4-26b-a4b-it"
+MODEL = "gemma-4-26b-a4b-it"
 MIN_SECONDS_BETWEEN_CALLS = _number("MIN_SECONDS_BETWEEN_CALLS", 4)
 SOFT_LIMIT = int(_number("GEMMA_SOFT_LIMIT", 1000))
 USE_CACHE = os.environ.get("GEMMA_CACHE", "1") != "0"
@@ -294,7 +294,7 @@ def describe_error(error):
     if _is_busy(error):
         return "Google had a problem on its side. Wait a minute and try again."
     if "404" in low or "not found" in low:
-        return f"Model not found. Check the model name (we use '{MODEL}') and GEMMA_MODEL in your .env."
+        return f"Model not found. Check the configured Gemma model '{MODEL}'."
     if "api key" in low or "api_key" in low or "401" in low or "403" in low or "permission" in low:
         return "Google did not accept your key. Make a fresh key in Google AI Studio and put it in .env."
     if any(word in low for word in ("timed out", "timeout", "connection", "getaddrinfo", "ssl")):

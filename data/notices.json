@@ -1,0 +1,90 @@
+[
+  {
+    "id": "notice_952d49f2",
+    "title": "OpenLake × MLH Build with Gemma 4 Hackathon Submission",
+    "category": "Hackathon",
+    "issuer": "OpenLake & Google Developer Student Club",
+    "issue_date": "2026-10-10",
+    "deadline": "2026-10-12",
+    "venue": "CC-302 Computer Lab & Organizer Portal",
+    "eligibility": "All registered undergraduate and postgraduate teams",
+    "summary": "Final project code, public GitHub repository, Agent Skill file, and demo presentation must be submitted before deadline.",
+    "action_items": [
+      "Push code and LICENSE to public GitHub repository",
+      "Add Agent Skill file (SKILL.md) and specify gemma-4-26b-a4b-it",
+      "Submit project link on Organizer HQ portal"
+    ],
+    "raw_extracted_text": "",
+    "created_at": "2026-10-10T14:00:33.747599",
+    "source_filename": null
+  },
+  {
+    "id": "notice_3d49ba32",
+    "title": "Monthly Hostel Mess Rebate Application - Oct Cycle",
+    "category": "Hostel",
+    "issuer": "Council of Wardens (CoW)",
+    "issue_date": "2026-10-10",
+    "deadline": "2026-10-14",
+    "venue": "Hall of Residence 1 Office & Student ERP Portal",
+    "eligibility": "Hostel residents away for > 4 consecutive days with leave approval",
+    "summary": "Mess rebate claims must be filed within 5 days of returning. Attach signed warden permission slip.",
+    "action_items": [
+      "Download rebate claim form from ERP portal",
+      "Get caretaker signature and submit to Mess Supervisor"
+    ],
+    "raw_extracted_text": "",
+    "created_at": "2026-10-10T14:00:33.749829",
+    "source_filename": null
+  },
+  {
+    "id": "notice_84863b69",
+    "title": "Autumn Semester Mid-Term Examination Hall Ticket & Schedule",
+    "category": "Examination",
+    "issuer": "Academic Affairs Office",
+    "issue_date": "2026-10-10",
+    "deadline": "2026-10-17",
+    "venue": "Academic Block A - Examination Halls 1 to 4",
+    "eligibility": "Students with >= 75% minimum attendance in all registered courses",
+    "summary": "Hall tickets are available on the AIMS portal. Physical printouts signed by Faculty Advisor are mandatory for exam entry.",
+    "action_items": [
+      "Download and print hall ticket from AIMS portal",
+      "Obtain Faculty Advisor signature before Friday"
+    ],
+    "raw_extracted_text": "",
+    "created_at": "2026-10-10T14:00:33.751403",
+    "source_filename": null
+  },
+  {
+    "id": "notice_6aac5ff7",
+    "title": "Central Library Book Return & Clearance Notice",
+    "category": "Academic",
+    "issuer": "Central Library Services",
+    "issue_date": "2026-10-10",
+    "deadline": "2026-10-20",
+    "venue": "Central Library Circulation Counter",
+    "eligibility": "All registered student library card holders",
+    "summary": "Renew or return overdue books before the fine waiver deadline to maintain uninterrupted digital catalog access.",
+    "action_items": [
+      "Check issued books on library portal",
+      "Return overdue books or renew online"
+    ],
+    "raw_extracted_text": "",
+    "created_at": "2026-10-10T14:00:33.752932",
+    "source_filename": null
+  },
+  {
+    "id": "notice_174efd2b",
+    "title": "Example College Tech Fest",
+    "category": "Event",
+    "issuer": "",
+    "issue_date": null,
+    "deadline": null,
+    "venue": "Main Seminar Hall, Block B",
+    "eligibility": "",
+    "summary": "The college is organizing an Example College Tech Fest on 14 March 2027. The event will take place from 10:00 AM to 4:00 PM at the Main Seminar Hall, Block B.",
+    "action_items": [],
+    "raw_extracted_text": "",
+    "created_at": "2026-10-10T14:23:54.609002",
+    "source_filename": "notice.png"
+  }
+]

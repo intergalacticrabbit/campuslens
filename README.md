@@ -1,69 +1,114 @@
-# Gemma 4 Starter
+# CampusLens
 
-Build with **Gemma 4** (model `gemma-4-26b-a4b-it`), an open model from Google, using a free key. This repo has two jobs:
+**CampusLens turns campus notices into clear deadlines and next steps.** Upload a notice photo, review the facts Gemini's required Gemma 4 model extracts, then save its actionable items as searchable tasks.
 
-1. **Learn:** run the numbered scripts in order. Each one adds one idea.
-2. **Build:** copy `app_template/` and `harness/` as the start of your hackathon project.
+![CampusLens overview dashboard](./campuslens-dashboard.png)
 
-Event: MLH Hack Day, IIT Bhilai. Date: [EVENT DATE]. Help desk: [HELP DESK LOCATION].
+![CampusLens notice scanner](./campuslens-scanner.png)
 
-## How to run it (5 steps)
+## What it does
 
-**1. Get a free key.** Go to [aistudio.google.com](https://aistudio.google.com), sign in, and create an API key. Use your own key. Do not share it.
+- A custom React dashboard with an overview, notice scanner, task center, and saved-notice library.
+- Image upload with side-by-side source preview and editable extraction results.
+- Extracts title, deadline, venue, eligibility, and action items without inventing missing details.
+- Persists notices and tasks in a local JSON file.
+- Searches notices and tasks, filters tasks by status, and tracks completion.
+- Uses only `gemma-4-26b-a4b-it` for model inference. Validation, persistence, search, and task operations are Python code.
 
-**2. Get this repo.** Click **Use this template** on GitHub, or click **Code > Download ZIP** and unzip it. Open a terminal in the folder.
+## Stack
 
-**3. Make a virtual environment and install.** (A virtual environment is a private box for this project's packages.)
+- React, TypeScript, Vite, and custom responsive CSS.
+- FastAPI local API.
+- Python JSON task manager.
+- Google Gemini API with Gemma 4 `gemma-4-26b-a4b-it`.
 
-Windows (PowerShell):
+## Setup (Windows PowerShell)
+
+From the repository root:
+
 ```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
-If `python` is not found, try `py -m venv .venv` instead. If your prompt already starts with another name like `(.venv)` before you begin, type `deactivate` first, or you will install into the wrong environment. After the activate line, your prompt should start with `(.venv)`.
-
-If PowerShell says "running scripts is disabled", run `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` and try the activate line again. It only affects this window.
-
-Mac / Linux:
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+Copy-Item .env.example .env
+notepad .env
 ```
 
-**4. Add your key.** Copy `.env.example` to `.env`, open it, and paste your key after `GEMINI_API_KEY=`.
+Add your own `GEMINI_API_KEY` to `.env`. Never commit that file or share the key.
 
-Windows: `Copy-Item .env.example .env` then `notepad .env`. Mac / Linux: `cp .env.example .env`.
+Install the frontend dependencies in a second terminal:
 
-Never commit `.env`. It is already in `.gitignore`.
-
-**5. Check it works.**
+```powershell
+cd frontend
+npm install
 ```
-python 00_check_setup.py
+
+## Run locally in development
+
+Terminal 1, from the repository root:
+
+```powershell
+python -m uvicorn server:app --host 127.0.0.1 --port 8000 --reload
 ```
-Every line should say PASS. If not, see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 
-## The scripts
+Terminal 2:
 
-| Script | What it teaches |
-|---|---|
-| `00_check_setup.py` | Is your computer ready? One tiny test call. |
-| `01_hello.py` | Your first call to Gemma 4. |
-| `02_system_instruction.py` | Give the model a rule. Same question, different answer. |
-| `03_chat.py` | Chat memory: follow-up questions that work. |
-| `04_image.py` | Send a picture and get text back. |
-| `05_function_calling.py` | The model asks your code to run a function. |
+```powershell
+cd frontend
+npm run dev
+```
 
-## Next
+Open [http://127.0.0.1:5173](http://127.0.0.1:5173). Vite forwards `/api` requests to the local FastAPI service.
 
-- **Build your own:** copy [app_template/](app_template/README.md) (a one-screen app).
-- **Add a tool:** see [harness/](harness/README.md) (the loop that lets the model use tools).
-- **Two challenges:** [docs/TWO_CHALLENGES.md](docs/TWO_CHALLENGES.md). One project can enter both.
-- **Submitting:** [docs/SUBMISSION_CHECKLIST.md](docs/SUBMISSION_CHECKLIST.md). Run `python tools/check_submission.py` before you submit.
-- **Stuck?** [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md), [docs/CHEATSHEET.md](docs/CHEATSHEET.md), [docs/IDEAS.md](docs/IDEAS.md).
-- **Using an AI coding tool?** Paste [docs/AI_ASSISTANT_PROMPT.md](docs/AI_ASSISTANT_PROMPT.md) into it first.
+## Build and serve the production frontend
+
+```powershell
+cd frontend
+npm run build
+cd ..
+python -m uvicorn server:app --host 127.0.0.1 --port 8000
+```
+
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000). FastAPI serves the built React app and API from the same local origin.
+
+## Tests
+
+Python tests (no key or live model request required):
+
+```powershell
+python -m pip install -r requirements-dev.txt
+python -m pytest -q
+```
+
+Frontend production build:
+
+```powershell
+cd frontend
+npm run build
+```
+
+## Data and privacy
+
+Saved notices and tasks are stored at `data/campus_data.json`. The JSON file is ignored by Git. Uploaded images are temporarily written for model analysis and deleted after the request; saving a notice does not retain the original image. The app listens on `127.0.0.1` by default. Notice images are sent to Google's Gemini API when you request analysis.
+
+## Team branches
+
+| Member | Branch | Focus |
+|---|---|---|
+| 1 | `feature/gemma-ai` | Image extraction |
+| 2 | `feature/ui` | React interface |
+| 3 | `feature/tasks` | Persistent tasks |
+| 4 | `feature/tools` | Agent tools |
+| 5 | `feature/testing-docs` | Tests and submission documentation |
+
+The React frontend is served by Vite during development. The stable Python interfaces are in `server.py` and `task_manager.py`; coordinate schema changes before merging parallel work.
+
+## Demo & Architecture
+
+![CampusLens Demo](docs/screenshot.png)
+
+CampusLens turns campus notices and circulars into structured deadlines, actionable tasks, and a searchable knowledge base using Google's `gemma-4-26b-a4b-it`.
 
 ## License
 
-MIT. See [LICENSE](LICENSE). Keep this file in your project.
+This project is licensed under the MIT License; see [LICENSE](LICENSE).
