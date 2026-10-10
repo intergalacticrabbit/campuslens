@@ -116,12 +116,19 @@ function App() {
   const [draft, setDraft] = useState<NoticeDraft | null>(null);
   const [noticeSearch, setNoticeSearch] = useState("");
   const [loadingDashboard, setLoadingDashboard] = useState(true);
+  const [loadingTasks, setLoadingTasks] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [noticeError, setNoticeError] = useState("");
   const [pageError, setPageError] = useState("");
   const [toast, setToast] = useState("");
   const [dragging, setDragging] = useState(false);
+  const [dialog, setDialog] = useState<"help" | "settings" | "workspace" | null>(null);
+  const [selectedNotice, setSelectedNotice] = useState<Notice | null>(null);
+  const [reducedMotion, setReducedMotion] = useState(
+    () => window.localStorage.getItem("campuslens-reduced-motion") === "true",
+  );
+  const [apiStatus, setApiStatus] = useState<"unknown" | "checking" | "connected" | "unavailable">("unknown");
   const uploadRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -148,6 +155,15 @@ function App() {
     return () => window.clearTimeout(timeout);
   }, [toast]);
 
+  useEffect(() => {
+    window.localStorage.setItem("campuslens-reduced-motion", String(reducedMotion));
+  }, [reducedMotion]);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("reduce-motion", reducedMotion);
+    return () => document.documentElement.classList.remove("reduce-motion");
+  }, [reducedMotion]);
+
   async function loadDashboard() {
     setLoadingDashboard(true);
     setPageError("");
@@ -166,6 +182,7 @@ function App() {
   }
 
   async function loadTasks() {
+    setLoadingTasks(true);
     try {
       const result = await request<{ tasks: Task[] }>(
         `/api/tasks?query=${encodeURIComponent(query)}&status=${taskStatus}`,
@@ -174,7 +191,27 @@ function App() {
       setPageError("");
     } catch (error) {
       setPageError(error instanceof Error ? error.message : "Could not load your tasks.");
+    } finally {
+      setLoadingTasks(false);
     }
+  }
+
+  async function checkApiStatus() {
+    setApiStatus("checking");
+    try {
+      await request<{ status: string }>("/api/health");
+      setApiStatus("connected");
+    } catch {
+      setApiStatus("unavailable");
+    }
+  }
+
+  function navigateToTasks(status: "open" | "done" | "all" = "open", search = "") {
+    setTaskStatus(status);
+    setQuery(search);
+    setPageError("");
+    setView("tasks");
+    setSelectedNotice(null);
   }
 
   function acceptImage(file?: File) {
@@ -190,6 +227,13 @@ function App() {
     setSelectedFile(file);
     setDraft(null);
     setNoticeError("");
+  }
+
+  function removeImage() {
+    setSelectedFile(null);
+    setDraft(null);
+    setNoticeError("");
+    if (uploadRef.current) uploadRef.current.value = "";
   }
 
   async function analyzeImage() {
@@ -309,7 +353,9 @@ function App() {
           <div className="sidebar-footer">
             <span className="avatar">CL</span>
             <span className="user-label">Campus workspace</span>
-            <Settings2 size={16} />
+            <button className="sidebar-settings" onClick={() => setDialog("settings")} aria-label="Workspace settings" title="Workspace settings">
+              <Settings2 size={16} />
+            </button>
           </div>
         </div>
       </aside>
@@ -319,14 +365,15 @@ function App() {
           <div className="breadcrumbs"><span>Workspace</span><span className="crumb-slash">/</span><strong>{viewTitle}</strong></div>
           <div className="topbar-actions">
             <span className="today-label"><CalendarDays size={15} /> {formatDate(new Date().toISOString())}</span>
-            <button className="icon-button" aria-label="Help"><CircleHelp size={17} /></button>
-            <span className="profile-dot">S</span>
+            <button className="icon-button" aria-label="Help and app guide" title="Help" onClick={() => { setDialog("help"); void checkApiStatus(); }}><CircleHelp size={17} /></button>
+            <button className="profile-dot" aria-label="Workspace information" title="Workspace information" onClick={() => setDialog("workspace")}>CL</button>
           </div>
         </header>
 
         {pageError && (
           <div className="inline-alert" role="alert">
             <span>{pageError}</span>
+            <button className="alert-refresh" onClick={() => view === "tasks" ? void loadTasks() : void loadDashboard()}>Refresh</button>
             <button onClick={() => setPageError("")} aria-label="Dismiss"><X size={15} /></button>
           </div>
         )}
@@ -351,6 +398,7 @@ function App() {
                 value={dashboard.summary.notices}
                 caption="In your library"
                 tone="sage"
+                onClick={() => setView("notices")}
               />
               <StatCard
                 icon={<Clock3 size={17} />}
@@ -358,6 +406,7 @@ function App() {
                 value={dashboard.summary.open_tasks}
                 caption="Actions to take"
                 tone="butter"
+                onClick={() => navigateToTasks("open")}
               />
               <StatCard
                 icon={<Check size={17} />}
@@ -365,6 +414,7 @@ function App() {
                 value={dashboard.summary.completed_tasks}
                 caption="You’ve got this"
                 tone="blue"
+                onClick={() => navigateToTasks("done")}
               />
             </div>
 
@@ -392,7 +442,7 @@ function App() {
                 ) : dashboard.notices.length ? (
                   <div className="compact-notice-list">
                     {dashboard.notices.slice(0, 4).map((notice) => (
-                      <NoticeRow key={notice.id} notice={notice} />
+                      <NoticeRow key={notice.id} notice={notice} onClick={() => setSelectedNotice(notice)} />
                     ))}
                   </div>
                 ) : (
@@ -455,14 +505,17 @@ function App() {
               <section className="surface-card upload-card">
                 <div className="card-heading">
                   <div className="step-title"><span className="step-number">01</span><div><h3>Your notice</h3><p>Choose a clear photo or screenshot</p></div></div>
-                  {selectedFile && <button className="icon-button" onClick={() => { setSelectedFile(null); setDraft(null); setNoticeError(""); }} aria-label="Remove image"><X size={16} /></button>}
+                  {selectedFile && <button className="icon-button" onClick={removeImage} aria-label="Remove image"><X size={16} /></button>}
                 </div>
                 <input
                   ref={uploadRef}
                   className="visually-hidden"
                   type="file"
                   accept="image/png,image/jpeg,image/webp,image/gif"
-                  onChange={(event) => acceptImage(event.target.files?.[0])}
+                  onChange={(event) => {
+                    acceptImage(event.target.files?.[0]);
+                    event.target.value = "";
+                  }}
                 />
                 {previewUrl ? (
                   <div className="image-preview">
@@ -541,10 +594,21 @@ function App() {
                 <label className="search-box"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search tasks, notices, or venues" /></label>
                 <label className="select-wrap"><span className="visually-hidden">Filter tasks</span><select value={taskStatus} onChange={(event) => setTaskStatus(event.target.value as typeof taskStatus)}><option value="open">To do</option><option value="done">Completed</option><option value="all">All tasks</option></select><ChevronDown size={15} /></label>
               </div>
-              {tasks.length ? (
+              {loadingTasks ? (
+                <LoadingRows />
+              ) : tasks.length ? (
                 <div className="managed-task-list">{tasks.map((task) => <TaskRow key={task.id} task={task} onComplete={completeTask} />)}</div>
               ) : (
-                <EmptyState icon={<CheckCheck size={20} />} title={query ? "No matching tasks" : "A little breathing room"} text={query ? "Try another search or clear the filter." : "Tasks from saved notices will appear here when there’s something to do."} action={!query ? <button className="small-link" onClick={() => setView("analyze")}>Scan a notice <ArrowRight size={14} /></button> : undefined} />
+                <EmptyState
+                  icon={<CheckCheck size={20} />}
+                  title={query ? "No matching tasks" : taskStatus === "done" ? "No completed tasks yet" : taskStatus === "all" ? "Your task list is clear" : "A little breathing room"}
+                  text={query ? "Try another search or clear it to see your tasks." : taskStatus === "done" ? "Completed tasks will be collected here." : taskStatus === "all" ? "Tasks from saved notices will appear here." : "Tasks from saved notices will appear here when there’s something to do."}
+                  action={query
+                    ? <button className="small-link" onClick={() => setQuery("")}>Clear search <X size={14} /></button>
+                    : taskStatus === "open"
+                      ? <button className="small-link" onClick={() => setView("analyze")}>Scan a notice <ArrowRight size={14} /></button>
+                      : undefined}
+                />
               )}
               <div className="list-footer">{tasks.length} {tasks.length === 1 ? "task" : "tasks"} shown</div>
             </section>
@@ -562,7 +626,7 @@ function App() {
                 <label className="search-box"><Search size={17} /><input value={noticeSearch} onChange={(event) => setNoticeSearch(event.target.value)} placeholder="Search notices by title, date, or venue" /></label>
                 <span className="result-count">{filteredNotices.length} saved</span>
               </div>
-              {filteredNotices.length ? <div className="library-grid">{filteredNotices.map((notice) => <NoticeCard key={notice.id} notice={notice} />)}</div> : <EmptyState icon={<FileText size={20} />} title={noticeSearch ? "No notices found" : "Your library starts here"} text={noticeSearch ? "Try a different title, date, or venue." : "Save a notice to keep its deadlines and action items close."} action={!noticeSearch ? <button className="small-link" onClick={() => setView("analyze")}>Scan your first notice <ArrowRight size={14} /></button> : undefined} />}
+              {filteredNotices.length ? <div className="library-grid">{filteredNotices.map((notice) => <NoticeCard key={notice.id} notice={notice} onClick={() => setSelectedNotice(notice)} />)}</div> : <EmptyState icon={<FileText size={20} />} title={noticeSearch ? "No notices found" : "Your library starts here"} text={noticeSearch ? "Try a different title, date, or venue." : "Save a notice to keep its deadlines and action items close."} action={noticeSearch ? <button className="small-link" onClick={() => setNoticeSearch("")}>Clear search <X size={14} /></button> : <button className="small-link" onClick={() => setView("analyze")}>Scan your first notice <ArrowRight size={14} /></button>} />}
             </section>
           </section>
         )}
@@ -571,12 +635,66 @@ function App() {
       </main>
 
       {toast && <div className="toast" role="status"><span className="toast-check"><Check size={14} /></span>{toast}<button onClick={() => setToast("")} aria-label="Dismiss"><X size={14} /></button></div>}
+      {dialog === "help" && (
+        <Dialog title="CampusLens quick guide" onClose={() => setDialog(null)}>
+          <p className="dialog-copy">Turn a campus notice into a short, editable list of details and next steps.</p>
+          <ol className="help-steps">
+            <li><strong>Scan:</strong> Upload a clear PNG, JPG, WebP, or GIF (up to 12 MB).</li>
+            <li><strong>Review:</strong> Check and edit the title, deadline, venue, eligibility, and actions.</li>
+            <li><strong>Save:</strong> The notice goes to your library and each action becomes a task.</li>
+          </ol>
+          <div className={`connection-status ${apiStatus}`} role="status">
+            <span className="status-dot" />
+            {apiStatus === "checking" ? "Checking local API…" : apiStatus === "connected" ? "Local API is connected" : apiStatus === "unavailable" ? "Local API is unavailable" : "API status not checked"}
+            <button className="small-link" onClick={() => void checkApiStatus()} disabled={apiStatus === "checking"}>
+              {apiStatus === "checking" ? "Checking…" : "Check again"}
+            </button>
+          </div>
+          <div className="dialog-actions">
+            <button className="button button-outline" onClick={() => setDialog(null)}>Close</button>
+            <button className="button button-primary" onClick={() => { setDialog(null); setView("analyze"); }}>Scan a notice <ArrowRight size={15} /></button>
+          </div>
+        </Dialog>
+      )}
+      {dialog === "settings" && (
+        <Dialog title="Workspace settings" onClose={() => setDialog(null)}>
+          <p className="dialog-copy">A few preferences for this browser and workspace.</p>
+          <label className="preference-row">
+            <span><strong>Reduce motion</strong><small>Limit animated transitions and loading effects.</small></span>
+            <input type="checkbox" checked={reducedMotion} onChange={(event) => setReducedMotion(event.target.checked)} />
+          </label>
+          <div className="privacy-summary">
+            <strong>Local workspace</strong>
+            <p>Notices and tasks are stored by the local app. Notice images are sent to Gemini only when you choose to analyze them and are not kept in your library.</p>
+          </div>
+          <div className="dialog-actions"><button className="button button-primary" onClick={() => setDialog(null)}>Done</button></div>
+        </Dialog>
+      )}
+      {dialog === "workspace" && (
+        <Dialog title="Campus workspace" onClose={() => setDialog(null)}>
+          <p className="dialog-copy">This is a local, single-user workspace. No account or campus profile is connected.</p>
+          <div className="workspace-facts"><span>Application<strong>CampusLens</strong></span><span>Notice analysis<strong>Gemma 4 via Gemini API</strong></span><span>Data<strong>Stored locally on this device</strong></span></div>
+          <div className="dialog-actions">
+            <button className="button button-outline" onClick={() => { setDialog("settings"); }}>Settings</button>
+            <button className="button button-primary" onClick={() => setDialog(null)}>Close</button>
+          </div>
+        </Dialog>
+      )}
+      {selectedNotice && (
+        <Dialog title="Saved notice" onClose={() => setSelectedNotice(null)}>
+          <NoticeDetails notice={selectedNotice} />
+          <div className="dialog-actions">
+            <button className="button button-outline" onClick={() => setSelectedNotice(null)}>Close</button>
+            <button className="button button-primary" onClick={() => navigateToTasks("all", selectedNotice.title)}>View related tasks <ArrowRight size={15} /></button>
+          </div>
+        </Dialog>
+      )}
     </div>
   );
 }
 
-function StatCard({ icon, label, value, caption, tone }: { icon: React.ReactNode; label: string; value: number; caption: string; tone: string }) {
-  return <article className={`stat-card ${tone}`}><span className="stat-icon">{icon}</span><span className="stat-label">{label}</span><strong>{value}</strong><span className="stat-caption">{caption}</span><span className="stat-arrow"><ArrowUpRight size={15} /></span></article>;
+function StatCard({ icon, label, value, caption, tone, onClick }: { icon: React.ReactNode; label: string; value: number; caption: string; tone: string; onClick: () => void }) {
+  return <button className={`stat-card ${tone}`} onClick={onClick} aria-label={`${label}: ${value}. ${caption}. Open related items.`}><span className="stat-icon">{icon}</span><span className="stat-label">{label}</span><strong>{value}</strong><span className="stat-caption">{caption}</span><span className="stat-arrow"><ArrowUpRight size={15} /></span></button>;
 }
 
 function EmptyState({ icon, title, text, action }: { icon: React.ReactNode; title: string; text: string; action?: React.ReactNode }) {
@@ -587,13 +705,13 @@ function LoadingRows() {
   return <div className="loading-list" aria-label="Loading"><span /><span /><span /></div>;
 }
 
-function NoticeRow({ notice }: { notice: Notice }) {
-  return <article className="notice-row">
+function NoticeRow({ notice, onClick }: { notice: Notice; onClick: () => void }) {
+  return <button className="notice-row" onClick={onClick} aria-label={`View notice: ${notice.title}`}>
     <span className="notice-row-icon"><FileText size={17} /></span>
     <div className="notice-row-copy"><strong>{notice.title}</strong><span>{notice.venue || "Campus notice"}{notice.deadline ? ` · Due ${formatDate(notice.deadline)}` : ""}</span></div>
     <span className="notice-action-count">{notice.actions.length} {notice.actions.length === 1 ? "action" : "actions"}</span>
     <ArrowRight className="row-arrow" size={15} />
-  </article>;
+  </button>;
 }
 
 function TaskRow({ task, onComplete, compact = false }: { task: Task; onComplete: (id: string) => void; compact?: boolean }) {
@@ -609,8 +727,8 @@ function TaskRow({ task, onComplete, compact = false }: { task: Task; onComplete
   </article>;
 }
 
-function NoticeCard({ notice }: { notice: Notice }) {
-  return <article className="library-notice">
+function NoticeCard({ notice, onClick }: { notice: Notice; onClick: () => void }) {
+  return <button className="library-notice" onClick={onClick} aria-label={`Open saved notice: ${notice.title}`}>
     <div className="library-notice-top"><span className="notice-type"><FileText size={13} /> NOTICE</span><span className="library-action-count">{notice.actions.length} actions</span></div>
     <h3>{notice.title}</h3>
     <div className="library-meta">
@@ -619,7 +737,53 @@ function NoticeCard({ notice }: { notice: Notice }) {
     </div>
     {notice.eligibility && <p className="eligibility-copy">For {notice.eligibility}</p>}
     {notice.actions.length > 0 && <div className="notice-action-list">{notice.actions.slice(0, 3).map((action, index) => <span key={`${notice.id}-${index}`}><Check size={13} />{action}</span>)}</div>}
-  </article>;
+    <span className="notice-card-cta">View notice <ArrowRight size={14} /></span>
+  </button>;
+}
+
+function NoticeDetails({ notice }: { notice: Notice }) {
+  return (
+    <div className="notice-details">
+      <h3>{notice.title}</h3>
+      <dl>
+        <div><dt>Deadline</dt><dd>{notice.deadline || "Not specified"}</dd></div>
+        <div><dt>Venue</dt><dd>{notice.venue || "Not specified"}</dd></div>
+        <div><dt>Eligibility</dt><dd>{notice.eligibility || "Not specified"}</dd></div>
+        <div><dt>Saved</dt><dd>{formatDate(notice.created_at)}</dd></div>
+      </dl>
+      <strong className="details-actions-title">Action items</strong>
+      {notice.actions.length
+        ? <ul>{notice.actions.map((action, index) => <li key={`${notice.id}-detail-${index}`}><Check size={14} />{action}</li>)}</ul>
+        : <p className="dialog-copy">No action items were identified in this notice.</p>}
+    </div>
+  );
+}
+
+function Dialog({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const element = dialogRef.current;
+    if (element && !element.open) element.showModal();
+    return () => {
+      if (element?.open) element.close();
+    };
+  }, []);
+
+  return (
+    <dialog
+      ref={dialogRef}
+      className="app-dialog"
+      aria-labelledby="dialog-title"
+      onCancel={(event) => { event.preventDefault(); onClose(); }}
+      onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
+    >
+      <div className="dialog-heading">
+        <h2 id="dialog-title">{title}</h2>
+        <button className="icon-button" onClick={onClose} aria-label="Close dialog"><X size={17} /></button>
+      </div>
+      <div className="dialog-content">{children}</div>
+    </dialog>
+  );
 }
 
 export default App;
