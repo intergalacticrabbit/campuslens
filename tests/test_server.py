@@ -325,3 +325,20 @@ def test_email_summarize_and_persistence(tmp_path, monkeypatch):
     assert list_res.status_code == 200
     assert len(list_res.json()["emails"]) == 1
     assert list_res.json()["emails"][0]["subject"] == "Exam Hall Ticket Notice"
+
+
+def test_create_task_endpoint(tmp_path, monkeypatch):
+    monkeypatch.setattr(server, "STORE", NoticeStore(tmp_path / "campus_data.json"))
+    client = TestClient(server.app)
+    response = client.post(
+        "/api/tasks",
+        json={"title": "Submit fee receipt to Admin", "deadline": "2026-10-15"},
+    )
+    assert response.status_code == 201
+    created = response.json()["task"]
+    assert created["text"] == "Submit fee receipt to Admin"
+    assert created["completed"] is False
+
+    # Check that task appears in tasks list
+    tasks = client.get("/api/tasks").json()["tasks"]
+    assert any(t["text"] == "Submit fee receipt to Admin" for t in tasks)

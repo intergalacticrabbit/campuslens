@@ -57,6 +57,12 @@ class NoticeInput(BaseModel):
     actions: list[str] = Field(default_factory=list, max_length=20)
 
 
+class TaskCreateInput(BaseModel):
+    title: str = Field(min_length=1, max_length=1000)
+    deadline: str | None = Field(default=None, max_length=100)
+    priority: str = Field(default="Medium", max_length=50)
+
+
 def _validate_pdf(contents: bytes):
     try:
         from pypdf import PdfReader
@@ -323,6 +329,19 @@ def list_tasks(
 ):
     try:
         return {"tasks": STORE.list_tasks(query=query, status=status)}
+    except NoticeDataError as error:
+        _store_error(error)
+
+
+@app.post("/api/tasks", status_code=201)
+def create_task(payload: TaskCreateInput):
+    try:
+        created = STORE.add_task(
+            text=payload.title,
+            deadline=payload.deadline,
+            priority=payload.priority,
+        )
+        return {"task": created}
     except NoticeDataError as error:
         _store_error(error)
 
