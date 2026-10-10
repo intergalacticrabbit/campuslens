@@ -89,6 +89,47 @@ def parse_notice_response(response_text):
     return notice
 
 
+def parse_email_response(response_text):
+    """Validate and normalize the email summary JSON returned by Gemma."""
+    if not isinstance(response_text, str) or not response_text.strip():
+        raise NoticeDataError("Gemma returned an empty response. Please analyze the email again.")
+
+    response = response_text.strip()
+    if response.startswith("```"):
+        response = re.sub(r"^```(?:json)?\s*|\s*```$", "", response, flags=re.IGNORECASE).strip()
+    try:
+        payload = json.loads(response)
+    except json.JSONDecodeError as error:
+        raise NoticeDataError("Gemma's response was not valid JSON.") from error
+    if not isinstance(payload, dict):
+        raise NoticeDataError("Gemma's response must be a JSON object.")
+
+    priority = str(payload.get("priority", "Medium")).strip().capitalize()
+    if priority not in ("Urgent", "High", "Medium", "Low"):
+        priority = "Medium"
+
+    deadlines = payload.get("deadlines") or []
+    if isinstance(deadlines, str):
+        deadlines = [deadlines]
+    clean_deadlines = [str(d).strip() for d in deadlines if str(d).strip()]
+
+    actions = payload.get("action_items") or payload.get("actions") or []
+    if isinstance(actions, str):
+        actions = [actions]
+    clean_actions = [str(a).strip() for a in actions if str(a).strip()]
+
+    return {
+        "subject": _clean_text(payload.get("subject"), "subject", optional=True) or "Campus Announcement",
+        "sender": _clean_text(payload.get("sender"), "sender", optional=True) or "Campus Office",
+        "priority": priority,
+        "priority_reason": _clean_text(payload.get("priority_reason"), "priority_reason", optional=True) or "",
+        "summary": _clean_text(payload.get("summary"), "summary", optional=True) or "",
+        "deadlines": clean_deadlines,
+        "actions": clean_actions,
+    }
+
+
+
 class NoticeStore:
     """Read and atomically update the app's local JSON data file."""
 
@@ -278,6 +319,60 @@ class NoticeStore:
             "open_tasks": len(data["tasks"]) - completed,
             "completed_tasks": completed,
         }
+
+
+    def save_email(self, email):
+        """Save a summarized email to persistent store."""
+        if not isinstance(email, dict):
+            raise NoticeDataError("Email data must be an object.")
+        subject = _clean_text(email.get("subject"), "subject", optional=True) or "Campus Announcement"
+        sender = _clean_text(email.get("sender"), "sender", optional=True) or "Campus Office"
+        summary = _clean_text(email.get("summary"), "summary", optional=True) or ""
+        priority = str(email.get("priority", "Medium")).strip().capitalize()
+        if priority not in ("Urgent", "High", "Medium", "Low"):
+            priority = "Medium"
+        priority_reason = _clean_text(email.get("priority_reason"), "priority_reason", optional=True) or ""
+        deadlines = email.get("deadlines", [])
+        actions = email.get("actions") or email.get("action_items") or []
+        if isinstance(actions, str):
+            actions = [actions]
+        clean_actions = [str(a).strip() for a in actions if str(a).strip()]
+
+        with self._lock:
+            data = self._read()
+            if "emails" not in data or not isinstance(data["emails"], list):
+                data["emails"] = []
+            
+            email_id = uuid.uuid4().hex
+            created_at = datetime.now(timezone.utc).isoformat()
+            saved_email = {
+                "id": email_id,
+                "subject": subject,
+                "sender": sender,
+                "summary": summary,
+                "priority": priority,
+                "priority_reason": priority_reason,
+                "deadlines": deadlines if isinstance(deadlines, list) else [str(deadlines)],
+                "actions": clean_actions,
+                "created_at": created_at,
+            }
+            data["emails"].append(saved_email)
+            self._write(data)
+            return saved_email
+
+    def list_emails(self, priority_filter="all"):
+        """List summarized emails, sorted by priority (Urgent > High > Medium > Low)."""
+        with self._lock:
+            data = self._read()
+            emails = data.get("emails", [])
+            if priority_filter != "all":
+                emails = [e for e in emails if e.get("priority", "").lower() == priority_filter.lower()]
+            priority_rank = {"Urgent": 1, "High": 2, "Medium": 3, "Low": 4}
+            return sorted(
+                emails,
+                key=lambda x: (priority_rank.get(x.get("priority", "Medium"), 5), str(x.get("created_at", ""))),
+            )
+
 
 
 # =============================================================================

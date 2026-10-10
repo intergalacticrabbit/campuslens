@@ -11,7 +11,12 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 import gemma_client
-from task_manager import NoticeDataError, NoticeStore, parse_notice_response
+from task_manager import (
+    NoticeDataError,
+    NoticeStore,
+    parse_notice_response,
+    parse_email_response,
+)
 
 ROOT = Path(__file__).resolve().parent
 FRONTEND_DIST = ROOT / "frontend" / "dist"
@@ -27,6 +32,19 @@ SYSTEM_RULE = (
     "Use null when a detail is not stated. actions must be a JSON array of short, "
     "specific things a student needs to do."
 )
+
+EMAIL_SYSTEM_RULE = (
+    "You are CampusLens, an intelligent email and announcement assistant for university students. "
+    "Analyze the campus email or announcement text carefully. Extract the core information and assign an objective priority: "
+    "- 'Urgent': Imminent deadline within 48 hours, examination/fee penalty, mandatory academic requirement, or critical emergency. "
+    "- 'High': Important deadline within 7 days, course registration, scholarship, placement interview, or graded coursework. "
+    "- 'Medium': General campus event, club announcement, guest lecture, hostel maintenance, or optional student opportunity. "
+    "- 'Low': Routine newsletter, policy update without immediate action, or informational circular. "
+    "Return strictly one valid JSON object with keys: "
+    "subject (string), sender (string), priority ('Urgent'|'High'|'Medium'|'Low'), priority_reason (string explaining why), "
+    "summary (concise 2-3 sentence overview), deadlines (array of strings), and action_items (array of short specific tasks for the student)."
+)
+
 STORE = NoticeStore()
 app = FastAPI(title="CampusLens API", version="1.0.0")
 
