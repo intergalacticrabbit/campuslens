@@ -114,3 +114,37 @@ def test_declarations_come_from_type_hints():
     assert declaration["parameters"]["properties"]["count"]["type"] == "integer"
     assert declaration["parameters"]["properties"]["name"]["description"] == "who to greet"
     assert declaration["parameters"]["required"] == ["name", "count"]
+
+
+# ---------- find_notices_by_deadline tool registration ----------
+
+def test_find_notices_by_deadline_is_registered():
+    """The find_notices_by_deadline tool should be in the TOOLS registry."""
+    assert "find_notices_by_deadline" in tools.TOOLS
+    decl = tools.TOOLS["find_notices_by_deadline"]["declaration"]
+    assert "before_date" in decl["parameters"]["properties"]
+    assert "max_results" in decl["parameters"]["properties"]
+    assert decl["parameters"]["properties"]["before_date"]["type"] == "string"
+    assert decl["parameters"]["properties"]["max_results"]["type"] == "integer"
+    assert "before_date" in decl["parameters"]["required"]
+    assert "max_results" not in decl["parameters"]["required"]
+
+
+def test_find_notices_by_deadline_invalid_date_returns_error():
+    """Invalid date input should return an Error string, not crash."""
+    result = tools.run_tool("find_notices_by_deadline", {"before_date": "nope"})
+    assert result.startswith("Error")
+
+
+def test_find_notices_by_deadline_agent_loop():
+    """The agent should be able to call find_notices_by_deadline and get a result."""
+    model = fake_model([
+        tool_request("find_notices_by_deadline", {"before_date": "2026-12-31"}),
+        final_answer("Here are the notices.")
+    ])
+    agent = Agent(generate=model)
+    answer = agent.run("What notices are due before end of year?")
+    assert answer == "Here are the notices."
+    assert agent.steps[0]["kind"] == "tool_call"
+    assert "find_notices_by_deadline" in agent.steps[0]["text"]
+

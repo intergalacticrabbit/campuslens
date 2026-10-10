@@ -98,3 +98,41 @@ def complete_campus_task(task_id: str) -> str:
     """
     success, msg = task_manager.toggle_task(task_id)
     return msg
+
+
+def find_notices_by_deadline(before_date: str, max_results: int = 5) -> str:
+    """
+    Find campus notices with deadlines on or before a given date, sorted earliest first.
+    Use this tool when a student asks about upcoming deadlines within a time window.
+
+    Args:
+        before_date: Cutoff date in YYYY-MM-DD format (inclusive).
+        max_results: Maximum number of results from 1 to 20 (default 5).
+
+    Returns:
+        Formatted list of matching notices with their deadlines, venues, and action items.
+    """
+    results = task_manager.find_notices_by_deadline(before_date, max_results=max_results)
+    if not results:
+        return f"No campus notices found with deadlines on or before {before_date}."
+
+    lines = [f"Found {len(results)} notice(s) with deadlines on or before {before_date}:"]
+    for i, n in enumerate(results, start=1):
+        lines.append(f"\n{i}. **{n.get('title')}** (Category: {n.get('category', 'General')})")
+        if n.get('issuer'):
+            lines.append(f"   - Issued By: {n.get('issuer')}")
+        if n.get('deadline'):
+            lines.append(f"   - Deadline: {n.get('deadline')}")
+        if n.get('venue'):
+            lines.append(f"   - Venue: {n.get('venue')}")
+        if n.get('eligibility'):
+            lines.append(f"   - Eligibility: {n.get('eligibility')}")
+        if n.get('summary'):
+            lines.append(f"   - Summary: {n.get('summary')}")
+        if n.get('action_items'):
+            lines.append(f"   - Required Actions: {', '.join(n.get('action_items'))}")
+        if n.get('source_filename'):
+            lines.append(f"   - Source: {n.get('source_filename')}")
+
+    return "\n".join(lines)
+
