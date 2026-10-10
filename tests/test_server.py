@@ -288,3 +288,40 @@ def test_delete_completed_tasks_endpoint(tmp_path, monkeypatch):
         "open_tasks": 1,
         "completed_tasks": 0,
     }
+
+
+def test_email_summarize_and_persistence(tmp_path, monkeypatch):
+    monkeypatch.setattr(server, "STORE", NoticeStore(tmp_path / "campus_data.json"))
+    monkeypatch.setattr(
+        server.gemma_client,
+        "ask",
+        lambda _prompt, system: json.dumps(
+            {
+                "subject": "Exam Hall Ticket Notice",
+                "sender": "Academic Office",
+                "priority": "High",
+                "priority_reason": "Upcoming final examination requires mandatory verification",
+                "summary": "Download and get verification signature before Friday.",
+                "deadlines": ["Friday, Oct 16"],
+                "action_items": ["Download admit card", "Get faculty signature"],
+            }
+        ),
+    )
+
+    client = TestClient(server.app)
+    # Test summarize
+    res = client.post("/api/emails/summarize", json={"text": "Exam hall tickets released..."})
+    assert res.status_code == 200
+    email_data = res.json()["email"]
+    assert email_data["priority"] == "High"
+    assert email_data["actions"] == ["Download admit card", "Get faculty signature"]
+
+    # Test save email
+    save_res = client.post("/api/emails", json=email_data)
+    assert save_res.status_code == 201
+
+    # Test list emails
+    list_res = client.get("/api/emails")
+    assert list_res.status_code == 200
+    assert len(list_res.json()["emails"]) == 1
+    assert list_res.json()["emails"][0]["subject"] == "Exam Hall Ticket Notice"

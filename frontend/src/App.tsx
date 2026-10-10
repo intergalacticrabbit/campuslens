@@ -267,6 +267,12 @@ function App() {
   }, [view, query, taskStatus, taskView]);
 
   useEffect(() => {
+    if (view === "emails") {
+      void loadEmails(emailPriorityFilter);
+    }
+  }, [view, emailPriorityFilter]);
+
+  useEffect(() => {
     if (!toast) return;
     const timeout = window.setTimeout(() => setToast(""), 3200);
     return () => window.clearTimeout(timeout);
@@ -486,6 +492,74 @@ function App() {
     } catch (error) {
       setPageError(error instanceof Error ? error.message : "Could not remove completed tasks.");
       setDialog(null);
+    }
+  }
+
+  async function loadEmails(priority = emailPriorityFilter) {
+    setLoadingEmails(true);
+    try {
+      const data = await request<{ emails: EmailSummary[] }>(`/api/emails?priority=${priority}`);
+      setEmailsList(data.emails || []);
+    } catch {
+      // Ignore
+    } finally {
+      setLoadingEmails(false);
+    }
+  }
+
+  async function handleSummarizeEmail() {
+    if (!emailText.trim()) return;
+    setSummarizingEmail(true);
+    setEmailError("");
+    setEmailDraft(null);
+    try {
+      const res = await request<{ email: Omit<EmailSummary, "id" | "created_at"> }>("/api/emails/summarize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email_text: emailText.trim() }),
+      });
+      setEmailDraft(res.email);
+      setToast("Email summarized & prioritized with Gemma 4!");
+    } catch (err) {
+      setEmailError(err instanceof Error ? err.message : "Could not summarize email.");
+    } finally {
+      setSummarizingEmail(false);
+    }
+  }
+
+  async function handleSaveEmail() {
+    if (!emailDraft) return;
+    setSavingEmail(true);
+    try {
+      await request<{ email: EmailSummary }>("/api/emails", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(emailDraft),
+      });
+
+      // Also convert actions into a campus notice so tasks appear in My Tasks
+      if (emailDraft.actions && emailDraft.actions.length > 0) {
+        await request<{ notice: Notice }>("/api/notices", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: `[Email] ${emailDraft.subject}`,
+            deadline: emailDraft.deadlines[0] || null,
+            venue: "Online / Email",
+            eligibility: "All students",
+            actions: emailDraft.actions,
+          }),
+        });
+      }
+
+      setToast("Saved to Email Library & Tasks added!");
+      setEmailDraft(null);
+      setEmailText("");
+      await Promise.all([loadEmails(), loadDashboard()]);
+    } catch (err) {
+      setEmailError(err instanceof Error ? err.message : "Could not save email.");
+    } finally {
+      setSavingEmail(false);
     }
   }
 
