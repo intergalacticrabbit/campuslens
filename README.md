@@ -103,6 +103,12 @@ Saved notices and tasks are stored at `data/campus_data.json`. The JSON file is 
 
 The React frontend is served by Vite during development. The stable Python interfaces are in `server.py` and `task_manager.py`; coordinate schema changes before merging parallel work.
 
+## Demo & Architecture
+
+![CampusLens Demo](docs/screenshot.png)
+
+CampusLens turns campus notices and circulars into structured deadlines, actionable tasks, and a searchable knowledge base using Google's `gemma-4-26b-a4b-it`.
+
 ## License
 
 This project is licensed under the MIT License; see [LICENSE](LICENSE).
