@@ -9,6 +9,8 @@ import {
   Check,
   CheckCheck,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   CircleHelp,
   Clock3,
   FileImage,
@@ -19,9 +21,13 @@ import {
   LoaderCircle,
   Mail,
   MapPin,
+  MessageCircle,
   Search,
+  Send,
   Settings2,
   Sparkles,
+  Trash2,
+  Type,
   Upload,
   X,
 } from "lucide-react";
@@ -73,6 +79,10 @@ type View = "overview" | "analyze" | "emails" | "tasks" | "notices";
 type NoticeDraft = Omit<Notice, "id" | "created_at">;
 type NoticeAnalysis = {
   notice: NoticeDraft;
+};
+type AssistantMessage = {
+  role: "user" | "assistant";
+  content: string;
 };
 
 const EMPTY_SUMMARY: Summary = { notices: 0, open_tasks: 0, completed_tasks: 0 };
@@ -138,6 +148,45 @@ function formatDate(value?: string | null) {
   }).format(parsed);
 }
 
+function parseTaskDate(value?: string | null) {
+  if (!value || !/\d/.test(value)) return null;
+  const text = value.trim();
+  const monthNames = "jan feb mar apr may jun jul aug sep oct nov dec".split(" ");
+  const monthPattern = "Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?";
+  const yearFirst = text.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
+  const dayFirst = text.match(new RegExp(`\\b(\\d{1,2})\\s+(${monthPattern})\\s+(\\d{4})\\b`, "i"));
+  const monthFirst = text.match(new RegExp(`\\b(${monthPattern})\\s+(\\d{1,2})(?:st|nd|rd|th)?[,]?\\s+(\\d{4})\\b`, "i"));
+  let year: number;
+  let month: number;
+  let day: number;
+  if (yearFirst) {
+    year = Number(yearFirst[1]);
+    month = Number(yearFirst[2]) - 1;
+    day = Number(yearFirst[3]);
+  } else if (dayFirst) {
+    day = Number(dayFirst[1]);
+    month = monthNames.indexOf(dayFirst[2].slice(0, 3).toLowerCase());
+    year = Number(dayFirst[3]);
+  } else if (monthFirst) {
+    month = monthNames.indexOf(monthFirst[1].slice(0, 3).toLowerCase());
+    day = Number(monthFirst[2]);
+    year = Number(monthFirst[3]);
+  } else {
+    return null;
+  }
+  const parsed = new Date(year, month, day);
+  if (parsed.getFullYear() !== year || parsed.getMonth() !== month || parsed.getDate() !== day) return null;
+  return parsed;
+}
+
+function dateKey(value: Date) {
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+}
+
+function startOfDay(value: Date) {
+  return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+}
+
 function App() {
   const [view, setView] = useState<View>("overview");
   const [dashboard, setDashboard] = useState<DashboardData>({
@@ -145,11 +194,18 @@ function App() {
     notices: [],
     upcoming_tasks: [],
   });
+  const [chartTasks, setChartTasks] = useState<Task[]>([]);
+  const [calendarTasks, setCalendarTasks] = useState<Task[]>([]);
   const [notices, setNotices] = useState<Notice[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [query, setQuery] = useState("");
   const [taskStatus, setTaskStatus] = useState<"open" | "done" | "all">("open");
+  const [taskView, setTaskView] = useState<"list" | "calendar">("list");
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => dateKey(new Date()));
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [inputMode, setInputMode] = useState<"file" | "text">("file");
+  const [noticeText, setNoticeText] = useState("");
   const [previewUrl, setPreviewUrl] = useState("");
   const [draft, setDraft] = useState<NoticeDraft | null>(null);
   const [noticeSearch, setNoticeSearch] = useState("");
@@ -161,13 +217,22 @@ function App() {
   const [pageError, setPageError] = useState("");
   const [toast, setToast] = useState("");
   const [dragging, setDragging] = useState(false);
-  const [dialog, setDialog] = useState<"help" | "settings" | "workspace" | null>(null);
+  const [dialog, setDialog] = useState<"help" | "settings" | "workspace" | "assistant" | "clear-completed" | null>(null);
+  const [assistantMessages, setAssistantMessages] = useState<AssistantMessage[]>([]);
+  const [assistantInput, setAssistantInput] = useState("");
+  const [assistantBusy, setAssistantBusy] = useState(false);
+  const [assistantError, setAssistantError] = useState("");
   const [selectedNotice, setSelectedNotice] = useState<Notice | null>(null);
   const [reducedMotion, setReducedMotion] = useState(
     () => window.localStorage.getItem("campuslens-reduced-motion") === "true",
   );
   const [apiStatus, setApiStatus] = useState<"unknown" | "checking" | "connected" | "unavailable">("unknown");
   const uploadRef = useRef<HTMLInputElement>(null);
+  const assistantEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (dialog === "assistant") assistantEndRef.current?.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth" });
+  }, [assistantMessages, assistantBusy, dialog, reducedMotion]);
 
   // Mail Summarizer State
   const [emailText, setEmailText] = useState("");
@@ -194,9 +259,12 @@ function App() {
 
   useEffect(() => {
     if (view !== "tasks") return;
-    const debounce = window.setTimeout(() => void loadTasks(), 180);
+    const debounce = window.setTimeout(() => {
+      if (taskView === "calendar") void loadCalendarTasks();
+      else void loadTasks();
+    }, 180);
     return () => window.clearTimeout(debounce);
-  }, [view, query, taskStatus]);
+  }, [view, query, taskStatus, taskView]);
 
   useEffect(() => {
     if (!toast) return;
@@ -217,12 +285,14 @@ function App() {
     setLoadingDashboard(true);
     setPageError("");
     try {
-      const [data, allNotices] = await Promise.all([
+      const [data, allNotices, allTasks] = await Promise.all([
         request<DashboardData>("/api/dashboard"),
         request<{ notices: Notice[] }>("/api/notices"),
+        request<{ tasks: Task[] }>("/api/tasks?status=all"),
       ]);
       setDashboard(data);
       setNotices(allNotices.notices);
+      setChartTasks(allTasks.tasks);
     } catch (error) {
       setPageError(error instanceof Error ? error.message : "Could not load your dashboard.");
     } finally {
@@ -245,81 +315,40 @@ function App() {
     }
   }
 
-  useEffect(() => {
-    if (view === "emails") {
-      void loadEmails(emailPriorityFilter);
-    }
-  }, [view, emailPriorityFilter]);
-
-  async function loadEmails(priority = "all") {
-    setLoadingEmails(true);
+  async function loadCalendarTasks() {
+    setLoadingTasks(true);
     try {
-      const data = await request<{ emails: EmailSummary[] }>(`/api/emails?priority=${priority}`);
-      setEmailsList(data.emails || []);
-    } catch {
-      // ignore
+      const result = await request<{ tasks: Task[] }>("/api/tasks?status=open");
+      setCalendarTasks(result.tasks);
+      setPageError("");
+    } catch (error) {
+      setPageError(error instanceof Error ? error.message : "Could not load calendar tasks.");
     } finally {
-      setLoadingEmails(false);
+      setLoadingTasks(false);
     }
   }
 
-  async function handleSummarizeEmail() {
-    if (!emailText.trim()) return;
-    setSummarizingEmail(true);
-    setEmailError("");
+  async function askAssistant(question = assistantInput) {
+    const trimmedQuestion = question.trim();
+    if (!trimmedQuestion || assistantBusy) return;
+    const history = assistantMessages.slice(-8);
+    setAssistantMessages((current) => [...current, { role: "user", content: trimmedQuestion }]);
+    if (!question.trim() || question === assistantInput) setAssistantInput("");
+    setAssistantBusy(true);
+    setAssistantError("");
     try {
-      const res = await request<{ summary: Omit<EmailSummary, "id" | "created_at"> }>("/api/emails/summarize", {
+      const result = await request<{ answer: string }>("/api/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: emailText }),
+        body: JSON.stringify({ question: trimmedQuestion, history }),
       });
-      setEmailDraft(res.summary);
-      setToast("Email analyzed & prioritized with Gemma 4!");
-    } catch (err) {
-      setEmailError(err instanceof Error ? err.message : "Failed to analyze email.");
+      setAssistantMessages((current) => [...current, { role: "assistant", content: result.answer }]);
+    } catch (error) {
+      setAssistantError(error instanceof Error ? error.message : "The assistant could not answer. Please try again.");
     } finally {
-      setSummarizingEmail(false);
+      setAssistantBusy(false);
     }
   }
-
-  async function handleSaveEmail() {
-    if (!emailDraft) return;
-    setSavingEmail(true);
-    try {
-      await request("/api/emails", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(emailDraft),
-      });
-      if (emailDraft.actions && emailDraft.actions.length > 0) {
-        try {
-          await request("/api/notices", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              title: `[${emailDraft.priority}] ${emailDraft.subject}`,
-              deadline: emailDraft.deadlines?.[0] || null,
-              venue: emailDraft.sender || "Campus Mail",
-              eligibility: "Student",
-              actions: emailDraft.actions,
-            }),
-          });
-        } catch {
-          // notice might already exist
-        }
-      }
-      setEmailDraft(null);
-      setEmailText("");
-      setToast("Saved to Mail Inbox and added action tasks!");
-      await loadEmails(emailPriorityFilter);
-      await loadDashboard();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to save email.");
-    } finally {
-      setSavingEmail(false);
-    }
-  }
-
 
   async function checkApiStatus() {
     setApiStatus("checking");
@@ -341,12 +370,13 @@ function App() {
 
   function acceptImage(file?: File) {
     if (!file) return;
-    if (!["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.type)) {
-      setNoticeError("Choose a PNG, JPEG, WebP, or GIF image.");
+    const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+    if (!isPdf && !["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.type)) {
+      setNoticeError("Choose a PNG, JPEG, WebP, GIF, or PDF notice.");
       return;
     }
     if (file.size > 12 * 1024 * 1024) {
-      setNoticeError("This image is larger than 12 MB. Choose a smaller image.");
+      setNoticeError("This file is larger than 12 MB. Choose a smaller file.");
       return;
     }
     setSelectedFile(file);
@@ -384,6 +414,28 @@ function App() {
     }
   }
 
+  async function analyzeText() {
+    if (!noticeText.trim()) {
+      setNoticeError("Paste or type the notice text before asking Gemma to extract it.");
+      return;
+    }
+    setAnalyzing(true);
+    setNoticeError("");
+    try {
+      const result = await request<NoticeAnalysis>("/api/notices/analyze-text", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: noticeText.trim() }),
+      });
+      setDraft(result.notice);
+      setToast("Notice details are ready to review.");
+    } catch (error) {
+      setNoticeError(error instanceof Error ? error.message : "Could not analyze this text.");
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
   async function saveNotice() {
     if (!draft?.title.trim()) {
       setNoticeError("Add a title before saving this notice.");
@@ -400,6 +452,7 @@ function App() {
       await loadDashboard();
       setDraft(null);
       setSelectedFile(null);
+      setNoticeText("");
       setView("overview");
       setToast("Saved. Its action items are now in your task list.");
     } catch (error) {
@@ -414,10 +467,25 @@ function App() {
       await request<{ task: Task }>(`/api/tasks/${encodeURIComponent(taskId)}/complete`, {
         method: "PATCH",
       });
-      await Promise.all([loadDashboard(), loadTasks()]);
+      await Promise.all([
+        loadDashboard(),
+        taskView === "calendar" ? loadCalendarTasks() : loadTasks(),
+      ]);
       setToast("Task marked complete.");
     } catch (error) {
       setPageError(error instanceof Error ? error.message : "Could not update this task.");
+    }
+  }
+
+  async function clearCompletedTasks() {
+    try {
+      const result = await request<{ deleted: number }>("/api/tasks/completed", { method: "DELETE" });
+      setDialog(null);
+      await Promise.all([loadDashboard(), loadTasks(), loadCalendarTasks()]);
+      setToast(result.deleted ? `Removed ${result.deleted} completed ${result.deleted === 1 ? "task" : "tasks"}.` : "There are no completed tasks to remove.");
+    } catch (error) {
+      setPageError(error instanceof Error ? error.message : "Could not remove completed tasks.");
+      setDialog(null);
     }
   }
 
@@ -434,6 +502,56 @@ function App() {
         .some((value) => value!.toLocaleLowerCase().includes(search)),
     );
   }, [notices, noticeSearch]);
+
+  const completionRate = chartTasks.length
+    ? Math.round((chartTasks.filter((task) => task.completed).length / chartTasks.length) * 100)
+    : 0;
+  const weekWorkload = useMemo(() => Array.from({ length: 7 }, (_, index) => {
+    const day = startOfDay(new Date());
+    day.setDate(day.getDate() + index);
+    const count = chartTasks.filter((task) => {
+      const deadline = parseTaskDate(task.notice?.deadline);
+      return !task.completed && deadline && dateKey(deadline) === dateKey(day);
+    }).length;
+    return {
+      date: day,
+      count,
+      label: new Intl.DateTimeFormat("en", { weekday: "short" }).format(day),
+    };
+  }), [chartTasks]);
+  const maxWeekWorkload = Math.max(1, ...weekWorkload.map((day) => day.count));
+
+  const calendarCells = useMemo(() => {
+    const first = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1);
+    const start = new Date(first);
+    start.setDate(first.getDate() - ((first.getDay() + 6) % 7));
+    return Array.from({ length: 42 }, (_, index) => {
+      const day = new Date(start);
+      day.setDate(start.getDate() + index);
+      return day;
+    });
+  }, [calendarMonth]);
+  const filteredCalendarTasks = useMemo(() => {
+    const search = query.trim().toLocaleLowerCase();
+    if (!search) return calendarTasks;
+    return calendarTasks.filter((task) =>
+      [task.text, task.notice?.title, task.notice?.venue]
+        .filter(Boolean)
+        .some((value) => value!.toLocaleLowerCase().includes(search)),
+    );
+  }, [calendarTasks, query]);
+  const calendarTasksByDate = useMemo(() => {
+    const grouped = new Map<string, Task[]>();
+    for (const task of filteredCalendarTasks) {
+      const deadline = parseTaskDate(task.notice?.deadline);
+      if (!deadline) continue;
+      const key = dateKey(deadline);
+      grouped.set(key, [...(grouped.get(key) ?? []), task]);
+    }
+    return grouped;
+  }, [filteredCalendarTasks]);
+  const selectedDayTasks = calendarTasksByDate.get(selectedCalendarDate) ?? [];
+  const undatedCalendarTasks = filteredCalendarTasks.filter((task) => !parseTaskDate(task.notice?.deadline));
 
   const viewTitle = {
     overview: "Overview",
@@ -473,10 +591,15 @@ function App() {
         </nav>
 
         <div className="sidebar-bottom">
-          <div className="sidebar-note">
+          <button
+            className="sidebar-note"
+            onClick={() => { setAssistantError(""); setDialog("assistant"); }}
+            aria-label="Open CampusLens AI assistant"
+            title="Ask the CampusLens assistant"
+          >
             <span className="sidebar-note-icon"><Sparkles size={15} /></span>
-            <p>From notice board to <strong>next step.</strong></p>
-          </div>
+            <span className="sidebar-note-copy"><strong>Campus assistant</strong><span>Ask about tasks, deadlines, or anything else.</span><span className="sidebar-assistant-cta">Ask Gemma <ArrowRight size={12} /></span></span>
+          </button>
           <div className="sidebar-footer">
             <span className="avatar">CL</span>
             <span className="user-label">Campus workspace</span>
@@ -544,6 +667,44 @@ function App() {
                 onClick={() => navigateToTasks("done")}
               />
             </div>
+
+            <section className="insights-grid" aria-label="Task insights">
+              <article className="surface-card insight-card">
+                <div className="card-heading">
+                  <div><h3>Task completion</h3><p>Progress across all saved actions</p></div>
+                  <span className="heading-icon green-icon"><CheckCheck size={16} /></span>
+                </div>
+                <div className="completion-chart">
+                  <div
+                    className="completion-ring"
+                    role="img"
+                    aria-label={`${completionRate}% of ${chartTasks.length} tasks completed`}
+                    style={{ "--completion": `${completionRate}%` } as React.CSSProperties}
+                  >
+                    <div><strong>{completionRate}%</strong><span>complete</span></div>
+                  </div>
+                  <div className="chart-legend">
+                    <span><i className="legend-dot done-dot" /> Completed <strong>{dashboard.summary.completed_tasks}</strong></span>
+                    <span><i className="legend-dot open-dot" /> To do <strong>{dashboard.summary.open_tasks}</strong></span>
+                  </div>
+                </div>
+              </article>
+              <article className="surface-card insight-card workload-card">
+                <div className="card-heading">
+                  <div><h3>Next 7 days</h3><p>Open tasks with a readable due date</p></div>
+                  <span className="heading-icon butter-icon"><CalendarDays size={16} /></span>
+                </div>
+                <div className="workload-chart" role="img" aria-label="Open tasks due on each of the next seven days">
+                  {weekWorkload.map((day) => (
+                    <div className="workload-day" key={dateKey(day.date)} title={`${day.count} ${day.count === 1 ? "task" : "tasks"} due ${formatDate(dateKey(day.date))}`}>
+                      <span className="workload-count">{day.count || ""}</span>
+                      <div className="workload-track"><i style={{ height: `${day.count ? Math.max(14, (day.count / maxWeekWorkload) * 100) : 3}%` }} /></div>
+                      <span className="workload-label">{day.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </article>
+            </section>
 
             <div className="section-heading">
               <div>
@@ -623,22 +784,34 @@ function App() {
               <div>
                 <p className="eyebrow">NOTICE SCANNER</p>
                 <h1>Turn a notice into <em>a next step.</em></h1>
-                <p className="intro-copy">Add a photo. We’ll pull out the details; you stay in control.</p>
+                <p className="intro-copy">Upload a photo or PDF, or paste the notice text. You stay in control.</p>
               </div>
-              <span className="model-pill"><span className="status-dot" /> Gemma 4 · image understanding</span>
+              <span className="model-pill"><span className="status-dot" /> Gemma 4 · notice analysis</span>
             </div>
 
-            <div className="scanner-grid">
+            <div className={`scanner-grid ${inputMode === "text" ? "text-scanner-grid" : ""}`}>
               <section className="surface-card upload-card">
                 <div className="card-heading">
-                  <div className="step-title"><span className="step-number">01</span><div><h3>Your notice</h3><p>Choose a clear photo or screenshot</p></div></div>
-                  {selectedFile && <button className="icon-button" onClick={removeImage} aria-label="Remove image"><X size={16} /></button>}
+                  <div className="step-title"><span className="step-number">01</span><div><h3>Your notice</h3><p>Choose a source to analyze</p></div></div>
+                  {inputMode === "file" && selectedFile && (
+                    <button className="icon-button" onClick={removeImage} aria-label="Remove file"><X size={16} /></button>
+                  )}
                 </div>
+                <div className="source-tabs" role="tablist" aria-label="Notice source">
+                  <button role="tab" aria-selected={inputMode === "file"} className={inputMode === "file" ? "active" : ""} onClick={() => { setInputMode("file"); setNoticeError(""); }}>
+                    <FileImage size={14} /> Image or PDF
+                  </button>
+                  <button role="tab" aria-selected={inputMode === "text"} className={inputMode === "text" ? "active" : ""} onClick={() => { setInputMode("text"); setNoticeError(""); }}>
+                    <Type size={14} /> Paste text
+                  </button>
+                </div>
+                {inputMode === "file" ? (
+                  <>
                 <input
                   ref={uploadRef}
                   className="visually-hidden"
                   type="file"
-                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  accept="image/png,image/jpeg,image/webp,image/gif,application/pdf,.pdf"
                   onChange={(event) => {
                     acceptImage(event.target.files?.[0]);
                     event.target.value = "";
@@ -646,27 +819,58 @@ function App() {
                 />
                 {previewUrl ? (
                   <div className="image-preview">
-                    <img src={previewUrl} alt="Preview of uploaded campus notice" />
+                    {selectedFile?.type === "application/pdf" || selectedFile?.name.toLowerCase().endsWith(".pdf")
+                      ? <iframe className="pdf-preview" src={previewUrl} title={`Preview of ${selectedFile.name}`} />
+                      : <img src={previewUrl} alt="Preview of uploaded campus notice" />}
                     <div className="image-filename"><FileImage size={14} />{selectedFile?.name}</div>
                   </div>
                 ) : (
                   <button
                     className={`dropzone ${dragging ? "dragging" : ""}`}
                     onClick={() => uploadRef.current?.click()}
+                    type="button"
                     onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
                     onDragLeave={() => setDragging(false)}
                     onDrop={(event) => { event.preventDefault(); setDragging(false); acceptImage(event.dataTransfer.files[0]); }}
                   >
                     <span className="upload-icon"><Upload size={19} /></span>
-                    <strong>Drop your image here</strong>
+                    <strong>Drop your image or PDF here</strong>
                     <span>or <b>browse files</b> from your device</span>
-                    <small>PNG, JPG, WEBP · up to 12 MB</small>
+                    <small>PNG, JPG, WEBP, PDF · up to 12 MB</small>
                   </button>
                 )}
-                <div className="scanner-tip"><Sparkles size={15} /><span>For best results, use a sharp image with the full notice in frame.</span></div>
+                {selectedFile && (
+                  <button className="small-link change-file-button" onClick={() => uploadRef.current?.click()}>
+                    <Upload size={13} /> Replace file
+                  </button>
+                )}
+                <div className="scanner-tip"><Sparkles size={15} /><span>Use a clear, uncropped notice. Files are analyzed for this request and not retained.</span></div>
                 <button className="button button-primary full-button" onClick={analyzeImage} disabled={analyzing || !selectedFile}>
-                  {analyzing ? <><LoaderCircle className="spin" size={17} /> Reading notice…</> : <><Sparkles size={16} /> Extract details</>}
+                  {analyzing ? <><LoaderCircle className="spin" size={17} /> Reading notice…</> : <><Sparkles size={16} /> Extract from file</>}
                 </button>
+                  </>
+                ) : (
+                  <div className="text-input-panel">
+                    <label htmlFor="notice-text" className="field-label">Notice text</label>
+                    <textarea
+                      id="notice-text"
+                      className="notice-text-input"
+                      rows={11}
+                      maxLength={20000}
+                      value={noticeText}
+                      onChange={(event) => setNoticeText(event.target.value)}
+                      placeholder={"Paste the notice or announcement here…\n\nInclude dates, locations, eligibility, and instructions when available."}
+                    />
+                    <div className="text-input-footer">
+                      <span>{noticeText.length.toLocaleString()} / 20,000 characters</span>
+                      {noticeText && <button className="small-link" onClick={() => setNoticeText("")}>Clear text <X size={13} /></button>}
+                    </div>
+                    <div className="scanner-tip"><Sparkles size={15} /><span>Gemma will extract the same details as it does from an image. Review before saving.</span></div>
+                    <button className="button button-primary full-button" onClick={analyzeText} disabled={analyzing || !noticeText.trim()}>
+                      {analyzing ? <><LoaderCircle className="spin" size={17} /> Reading notice…</> : <><Sparkles size={16} /> Extract from text</>}
+                    </button>
+                  </div>
+                )}
               </section>
 
               <section className="surface-card extraction-card">
@@ -706,7 +910,7 @@ function App() {
               </section>
             </div>
             {noticeError && <div className="inline-alert scanner-alert" role="alert"><span>{noticeError}</span><button onClick={() => setNoticeError("")} aria-label="Dismiss"><X size={15} /></button></div>}
-            <p className="privacy-note"><Settings2 size={14} /> Your image is analyzed for this request and isn't saved to the notice library unless you choose to save it.</p>
+            <p className="privacy-note"><Settings2 size={14} /> Uploaded files and pasted text are sent to Gemini only when you request analysis; neither is saved with the notice.</p>
           </section>
         )}
 
@@ -719,12 +923,87 @@ function App() {
             <section className="surface-card task-manager-card">
               <div className="task-manager-toolbar">
                 <label className="search-box"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search tasks, notices, or venues" /></label>
-                <label className="select-wrap"><span className="visually-hidden">Filter tasks</span><select value={taskStatus} onChange={(event) => setTaskStatus(event.target.value as typeof taskStatus)}><option value="open">To do</option><option value="done">Completed</option><option value="all">All tasks</option></select><ChevronDown size={15} /></label>
+                <div className="task-toolbar-actions">
+                  <div className="view-switch" role="group" aria-label="Task display">
+                    <button className={taskView === "list" ? "active" : ""} onClick={() => setTaskView("list")}><CheckCheck size={14} /> List</button>
+                    <button className={taskView === "calendar" ? "active" : ""} onClick={() => setTaskView("calendar")}><CalendarDays size={14} /> Calendar</button>
+                  </div>
+                  {taskView === "list" && (
+                    <label className="select-wrap"><span className="visually-hidden">Filter tasks</span><select value={taskStatus} onChange={(event) => setTaskStatus(event.target.value as typeof taskStatus)}><option value="open">To do</option><option value="done">Completed</option><option value="all">All tasks</option></select><ChevronDown size={15} /></label>
+                  )}
+                  {dashboard.summary.completed_tasks > 0 && (
+                    <button className="clear-completed-button" onClick={() => setDialog("clear-completed")}>
+                      <Trash2 size={14} /> Clear completed
+                    </button>
+                  )}
+                </div>
               </div>
-              {loadingTasks ? (
+              {taskView === "calendar" ? (
+                loadingTasks ? <LoadingRows /> : (
+                  <div className="calendar-layout">
+                    <div className="calendar-panel">
+                      <div className="calendar-toolbar">
+                        <button className="icon-button" aria-label="Previous month" onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))}><ChevronLeft size={17} /></button>
+                        <h2>{new Intl.DateTimeFormat("en", { month: "long", year: "numeric" }).format(calendarMonth)}</h2>
+                        <button className="icon-button" aria-label="Next month" onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))}><ChevronRight size={17} /></button>
+                        <button className="calendar-today" onClick={() => {
+                          const today = new Date();
+                          setCalendarMonth(new Date(today.getFullYear(), today.getMonth(), 1));
+                          setSelectedCalendarDate(dateKey(today));
+                        }}>Today</button>
+                      </div>
+                      <div className="calendar-grid" role="grid" aria-label="Tasks by deadline">
+                        {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => <span className="calendar-weekday" role="columnheader" key={day}>{day}</span>)}
+                        {calendarCells.map((day) => {
+                          const key = dateKey(day);
+                          const count = calendarTasksByDate.get(key)?.length ?? 0;
+                          const today = key === dateKey(new Date());
+                          return (
+                            <button
+                              className={`calendar-day ${day.getMonth() !== calendarMonth.getMonth() ? "outside-month" : ""} ${key === selectedCalendarDate ? "selected" : ""} ${today ? "today" : ""} ${count ? "has-tasks" : ""}`}
+                              key={key}
+                              role="gridcell"
+                              aria-label={`${formatDate(key)}${count ? `, ${count} open ${count === 1 ? "task" : "tasks"}` : ""}`}
+                              aria-pressed={key === selectedCalendarDate}
+                              onClick={() => {
+                                setSelectedCalendarDate(key);
+                                if (day.getMonth() !== calendarMonth.getMonth()) setCalendarMonth(new Date(day.getFullYear(), day.getMonth(), 1));
+                              }}
+                            >
+                              <span>{day.getDate()}</span>
+                              {count > 0 && <i>{count}</i>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="calendar-legend"><span><i className="legend-dot open-dot" /> Open tasks by notice deadline</span><span>Dates that could not be read stay in “No deadline”.</span></div>
+                    </div>
+                    <div className="calendar-day-panel">
+                      <div className="calendar-day-heading">
+                        <div><p className="eyebrow">SELECTED DAY</p><h3>{formatDate(selectedCalendarDate)}</h3></div>
+                        <span>{selectedDayTasks.length} due</span>
+                      </div>
+                      {selectedDayTasks.length
+                        ? <div className="managed-task-list">{[...selectedDayTasks].sort((a, b) => a.text.localeCompare(b.text)).map((task) => <TaskRow key={task.id} task={task} onComplete={completeTask} />)}</div>
+                        : <p className="calendar-empty">No tasks due this day. Pick another date or use the list view.</p>}
+                      {undatedCalendarTasks.length > 0 && (
+                        <div className="undated-tasks">
+                          <div className="undated-heading"><h4>No deadline</h4><span>{undatedCalendarTasks.length}</span></div>
+                          <div className="managed-task-list">{undatedCalendarTasks.slice(0, 5).map((task) => <TaskRow key={task.id} task={task} onComplete={completeTask} />)}</div>
+                          {undatedCalendarTasks.length > 5 && <p className="undated-more">{undatedCalendarTasks.length - 5} more undated tasks. Use the list view to see all.</p>}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              ) : loadingTasks ? (
                 <LoadingRows />
               ) : tasks.length ? (
-                <div className="managed-task-list">{tasks.map((task) => <TaskRow key={task.id} task={task} onComplete={completeTask} />)}</div>
+                <div className="managed-task-list">{[...tasks].sort((a, b) => {
+                  const left = parseTaskDate(a.notice?.deadline)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+                  const right = parseTaskDate(b.notice?.deadline)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+                  return left - right;
+                }).map((task) => <TaskRow key={task.id} task={task} onComplete={completeTask} />)}</div>
               ) : (
                 <EmptyState
                   icon={<CheckCheck size={20} />}
@@ -737,7 +1016,7 @@ function App() {
                       : undefined}
                 />
               )}
-              <div className="list-footer">{tasks.length} {tasks.length === 1 ? "task" : "tasks"} shown</div>
+              <div className="list-footer">{taskView === "calendar" ? `${filteredCalendarTasks.length} open ${filteredCalendarTasks.length === 1 ? "task" : "tasks"} · ${calendarTasksByDate.size} days with deadlines` : `${tasks.length} ${tasks.length === 1 ? "task" : "tasks"} shown`}</div>
             </section>
           </section>
         )}
@@ -1011,7 +1290,7 @@ function App() {
           </label>
           <div className="privacy-summary">
             <strong>Local workspace</strong>
-            <p>Notices and tasks are stored by the local app. Notice images are sent to Gemini only when you choose to analyze them and are not kept in your library.</p>
+            <p>Notices and tasks are stored by the local app. Notice files are sent to Gemini only when you analyze them. When you ask the assistant, your question and recent task/notice details are sent for an answer.</p>
           </div>
           <div className="dialog-actions"><button className="button button-primary" onClick={() => setDialog(null)}>Done</button></div>
         </Dialog>
@@ -1023,6 +1302,70 @@ function App() {
           <div className="dialog-actions">
             <button className="button button-outline" onClick={() => { setDialog("settings"); }}>Settings</button>
             <button className="button button-primary" onClick={() => setDialog(null)}>Close</button>
+          </div>
+        </Dialog>
+      )}
+      {dialog === "assistant" && (
+        <Dialog title="CampusLens assistant" className="assistant-dialog" onClose={() => setDialog(null)}>
+          <div className="assistant-intro">
+            <span className="assistant-intro-icon"><Sparkles size={16} /></span>
+            <p>Ask about your saved tasks and notices, get help prioritizing, or ask a general question. Answers use Gemma 4.</p>
+          </div>
+          <div className="assistant-messages" aria-live="polite" aria-label="Assistant conversation">
+            {!assistantMessages.length && (
+              <div className="assistant-welcome">
+                <span className="assistant-bot-icon"><MessageCircle size={17} /></span>
+                <div><strong>What can I help with?</strong><p>I can summarize your open tasks, find upcoming deadlines, or help you plan your next steps.</p></div>
+              </div>
+            )}
+            {assistantMessages.map((message, index) => (
+              <article className={`assistant-message ${message.role}`} key={`${message.role}-${index}`}>
+                <span className="assistant-message-icon">{message.role === "assistant" ? <Sparkles size={13} /> : "You"}</span>
+                <p>{message.content}</p>
+              </article>
+            ))}
+            {assistantBusy && <div className="assistant-thinking"><LoaderCircle className="spin" size={14} /> Thinking…</div>}
+            <div ref={assistantEndRef} />
+          </div>
+          {!assistantMessages.length && (
+            <div className="assistant-suggestions" aria-label="Suggested questions">
+              {["Summarize my open tasks", "What deadlines are coming up?", "Help me prioritize this week"].map((suggestion) => (
+                <button key={suggestion} onClick={() => void askAssistant(suggestion)} disabled={assistantBusy}>{suggestion}<ArrowRight size={12} /></button>
+              ))}
+            </div>
+          )}
+          {assistantError && <div className="assistant-error" role="alert">{assistantError}</div>}
+          <form className="assistant-composer" onSubmit={(event) => { event.preventDefault(); void askAssistant(); }}>
+            <textarea
+              value={assistantInput}
+              onChange={(event) => setAssistantInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  void askAssistant();
+                }
+              }}
+              placeholder="Ask about your tasks or anything else…"
+              aria-label="Ask the CampusLens assistant"
+              maxLength={2000}
+              rows={2}
+              disabled={assistantBusy}
+            />
+            <button className="assistant-send" type="submit" disabled={assistantBusy || !assistantInput.trim()} aria-label="Send question">
+              {assistantBusy ? <LoaderCircle className="spin" size={16} /> : <Send size={15} />}
+            </button>
+          </form>
+          <p className="assistant-footnote">Workspace data is sent to Gemini only when you ask a question.</p>
+        </Dialog>
+      )}
+      {dialog === "clear-completed" && (
+        <Dialog title="Clear completed tasks?" onClose={() => setDialog(null)}>
+          <p className="dialog-copy">
+            This removes {dashboard.summary.completed_tasks} completed {dashboard.summary.completed_tasks === 1 ? "task" : "tasks"} from your task list. Saved notices are kept, and open tasks are not changed.
+          </p>
+          <div className="dialog-actions">
+            <button className="button button-outline" onClick={() => setDialog(null)}>Keep tasks</button>
+            <button className="button button-danger" onClick={() => void clearCompletedTasks()}><Trash2 size={14} /> Remove completed tasks</button>
           </div>
         </Dialog>
       )}
@@ -1105,7 +1448,7 @@ function NoticeDetails({ notice }: { notice: Notice }) {
   );
 }
 
-function Dialog({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+function Dialog({ title, onClose, children, className = "" }: { title: string; onClose: () => void; children: React.ReactNode; className?: string }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const element = dialogRef.current;
@@ -1118,7 +1461,7 @@ function Dialog({ title, onClose, children }: { title: string; onClose: () => vo
   return (
     <dialog
       ref={dialogRef}
-      className="app-dialog"
+      className={`app-dialog ${className}`}
       aria-labelledby="dialog-title"
       onCancel={(event) => { event.preventDefault(); onClose(); }}
       onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}

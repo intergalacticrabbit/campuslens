@@ -1,6 +1,8 @@
 import json
+from io import BytesIO
 from pathlib import Path
 
+from pypdf import PdfWriter
 from fastapi.testclient import TestClient
 
 import server
@@ -104,34 +106,185 @@ def test_analysis_rejects_unapproved_upload_type(monkeypatch):
     assert response.status_code == 415
 
 
-def test_email_summarize_and_persistence(tmp_path, monkeypatch):
+def test_analysis_accepts_pdf_and_uses_gemma_pdf_helper(monkeypatch):
+    observed = {}
+    writer = PdfWriter()
+    writer.add_blank_page(width=612, height=792)
+    pdf = BytesIO()
+    writer.write(pdf)
+
+    def fake_analyze(file_path, prompt, system):
+        observed["path"] = Path(file_path)
+        observed["contents"] = observed["path"].read_bytes()
+        return json.dumps(
+            {
+                "title": "PDF notice",
+                "deadline": None,
+                "venue": None,
+                "eligibility": None,
+                "actions": [],
+            }
+        )
+
+    monkeypatch.setattr(server.gemma_client, "ask_with_pdf", fake_analyze)
+    response = TestClient(server.app).post(
+        "/api/notices/analyze",
+        files={"image": ("notice.pdf", pdf.getvalue(), "application/pdf")},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["notice"]["title"] == "PDF notice"
+    assert observed["contents"] == pdf.getvalue()
+    assert not observed["path"].exists()
+
+
+def test_analysis_rejects_malformed_pdf_before_model_call(monkeypatch):
+    monkeypatch.setattr(
+        server.gemma_client,
+        "ask_with_pdf",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("unexpected model call")),
+    )
+    response = TestClient(server.app).post(
+        "/api/notices/analyze",
+        files={"image": ("notice.pdf", b"%PDF-invalid", "application/pdf")},
+    )
+
+    assert response.status_code == 422
+    assert "could not be read" in response.json()["detail"]
+
+
+def test_analysis_rejects_pdf_over_page_limit_before_model_call(monkeypatch):
+    writer = PdfWriter()
+    for _ in range(server.MAX_PDF_PAGES + 1):
+        writer.add_blank_page(width=612, height=792)
+    pdf = BytesIO()
+    writer.write(pdf)
+    monkeypatch.setattr(
+        server.gemma_client,
+        "ask_with_pdf",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("unexpected model call")),
+    )
+    response = TestClient(server.app).post(
+        "/api/notices/analyze",
+        files={"image": ("notice.pdf", pdf.getvalue(), "application/pdf")},
+    )
+
+    assert response.status_code == 413
+    assert f"at most {server.MAX_PDF_PAGES} pages" in response.json()["detail"]
+
+
+def test_text_analysis_extracts_and_validates_structured_notice(monkeypatch):
+    observed = {}
+
+    def fake_ask(prompt, system):
+        observed["prompt"] = prompt
+        observed["system"] = system
+        return json.dumps(
+            {
+                "title": "Student research forum",
+                "deadline": "May 4",
+                "venue": "Library",
+                "eligibility": "All students",
+                "actions": ["Register online"],
+            }
+        )
+
+    monkeypatch.setattr(server.gemma_client, "ask", fake_ask)
+    response = TestClient(server.app).post(
+        "/api/notices/analyze-text",
+        json={"text": "Student research forum. Register by May 4 at the library."},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["notice"]["title"] == "Student research forum"
+    assert response.json()["notice"]["actions"] == ["Register online"]
+    assert "Student research forum" in observed["prompt"]
+    assert observed["system"] == server.SYSTEM_RULE
+
+
+def test_workspace_assistant_answers_with_saved_task_context(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "STORE", NoticeStore(tmp_path / "campus_data.json"))
+    server.STORE.save_notice(
+        {
+            "title": "Research showcase",
+            "deadline": "November 12, 2026",
+            "venue": "Library Hall",
+            "actions": ["Submit abstract", "Register online"],
+        }
+    )
+    observed = {}
+
+    def fake_ask(prompt, system):
+        observed["prompt"] = prompt
+        observed["system"] = system
+        return "You have two open tasks for the Research showcase."
+
+    monkeypatch.setattr(server.gemma_client, "ask", fake_ask)
+    response = TestClient(server.app).post(
+        "/api/assistant",
+        json={
+            "question": "Summarize my open tasks",
+            "history": [{"role": "user", "content": "I need help planning."}],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["answer"] == "You have two open tasks for the Research showcase."
+    assert "Submit abstract" in observed["prompt"]
+    assert "November 12, 2026" in observed["prompt"]
+    assert "I need help planning." in observed["prompt"]
+    assert "CampusLens Assistant" in observed["system"]
+
+
+def test_workspace_assistant_rejects_blank_question(monkeypatch):
     monkeypatch.setattr(
         server.gemma_client,
         "ask",
-        lambda _prompt, system=None: (
-            '{"subject": "Fee Payment Deadline", "sender": "Accounts Office", '
-            '"priority": "Urgent", "priority_reason": "Late fee applies tomorrow", '
-            '"summary": "Pay tuition fee before 5 PM", "deadlines": ["Tomorrow 5 PM"], '
-            '"action_items": ["Log in to portal", "Pay fee"]}'
-        ),
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("unexpected model call")),
     )
+    response = TestClient(server.app).post(
+        "/api/assistant",
+        json={"question": "   "},
+    )
+
+    assert response.status_code == 422
+    assert "Enter a question" in response.json()["detail"]
+
+
+def test_workspace_assistant_reports_model_errors(monkeypatch):
+    monkeypatch.setattr(
+        server.gemma_client,
+        "ask",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("Gemma is unavailable")),
+    )
+    monkeypatch.setattr(server.gemma_client, "describe_error", lambda error: str(error))
+
+    response = TestClient(server.app).post(
+        "/api/assistant",
+        json={"question": "How should I prioritize?"},
+    )
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Gemma is unavailable"
+
+
+def test_delete_completed_tasks_endpoint(tmp_path, monkeypatch):
+    monkeypatch.setattr(server, "STORE", NoticeStore(tmp_path / "campus_data.json"))
     client = TestClient(server.app)
+    client.post(
+        "/api/notices",
+        json={"title": "Career clinic", "actions": ["Book a slot", "Bring a CV"]},
+    )
+    task = client.get("/api/tasks").json()["tasks"][0]
+    client.patch(f"/api/tasks/{task['id']}/complete")
 
-    # Summarize email
-    res = client.post("/api/emails/summarize", json={"text": "Please pay tuition fee before tomorrow."})
-    assert res.status_code == 200
-    summary = res.json()["summary"]
-    assert summary["subject"] == "Fee Payment Deadline"
-    assert summary["priority"] == "Urgent"
+    response = client.delete("/api/tasks/completed")
 
-    # Save email
-    saved = client.post("/api/emails", json=summary)
-    assert saved.status_code == 201
-    assert saved.json()["email"]["priority"] == "Urgent"
-
-    # List emails
-    listed = client.get("/api/emails")
-    assert listed.status_code == 200
-    assert len(listed.json()["emails"]) == 1
-
+    assert response.status_code == 200
+    assert response.json() == {"deleted": 1}
+    assert len(client.get("/api/tasks", params={"status": "all"}).json()["tasks"]) == 1
+    assert client.get("/api/dashboard").json()["summary"] == {
+        "notices": 1,
+        "open_tasks": 1,
+        "completed_tasks": 0,
+    }

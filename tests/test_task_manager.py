@@ -91,6 +91,21 @@ def test_search_and_task_completion(tmp_path):
     assert store.summary() == {"notices": 1, "open_tasks": 1, "completed_tasks": 1}
 
 
+def test_delete_completed_tasks_preserves_notices_and_open_tasks(tmp_path):
+    store = NoticeStore(tmp_path / "campus_data.json")
+    store.save_notice(
+        {"title": "Project showcase", "actions": ["Register", "Bring a poster"]}
+    )
+    tasks = store.list_tasks(status="open")
+    store.complete_task(tasks[0]["id"])
+
+    assert store.delete_completed_tasks() == 1
+    assert store.delete_completed_tasks() == 0
+    assert len(store.list_notices()) == 1
+    assert [task["text"] for task in store.list_tasks(status="all")] == ["Register"]
+    assert store.summary() == {"notices": 1, "open_tasks": 1, "completed_tasks": 0}
+
+
 def test_blank_search_query_can_be_none(tmp_path):
     store = NoticeStore(tmp_path / "campus_data.json")
     store.save_notice({"title": "Open day", "actions": ["Register"]})

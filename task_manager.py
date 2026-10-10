@@ -299,6 +299,17 @@ class NoticeStore:
                     return {**task}
         raise NoticeDataError("That task no longer exists. Refresh the task list and try again.")
 
+    def delete_completed_tasks(self):
+        """Remove completed tasks while preserving their saved notices and open tasks."""
+        with self._lock:
+            data = self._read()
+            remaining = [task for task in data["tasks"] if not task["completed"]]
+            deleted = len(data["tasks"]) - len(remaining)
+            if deleted:
+                data["tasks"] = remaining
+                self._write(data)
+            return deleted
+
     def summary(self):
         with self._lock:
             data = self._read()
