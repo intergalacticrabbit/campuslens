@@ -6,10 +6,12 @@ import re
 import tempfile
 import threading
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 from pathlib import Path
+from typing import Optional, Dict, Any, List, Tuple
 
-DATA_FILE = Path(__file__).resolve().parent / "data" / "campus_data.json"
+ROOT = Path(__file__).resolve().parent
+DATA_FILE = ROOT / "data" / "campus_data.json"
 NOTICE_FIELDS = ("title", "deadline", "venue", "eligibility")
 MAX_TEXT_LENGTH = 1000
 MAX_ACTIONS = 20
@@ -265,3 +267,96 @@ class NoticeStore:
             "open_tasks": len(data["tasks"]) - completed,
             "completed_tasks": completed,
         }
+
+
+# =============================================================================
+# High-Level TaskManager Adapter (for harness/tools.py & agent integrations)
+# =============================================================================
+
+class TaskManager:
+    """Synchronized adapter providing helper queries for agent tools and CLI."""
+
+    def __init__(self, store: Optional[NoticeStore] = None, engine: Any = None):
+        if store is not None:
+            self.store = store
+        elif engine is not None and hasattr(engine, "data_dir"):
+            self.store = NoticeStore(path=Path(engine.data_dir) / "campus_data.json")
+        else:
+            self.store = NoticeStore()
+
+    def ingest_extracted_notice(self, raw_data: Dict[str, Any]) -> Tuple[bool, str, Dict[str, Any]]:
+        try:
+            payload = dict(raw_data)
+            if "action_items" in payload and "actions" not in payload:
+                payload["actions"] = payload["action_items"]
+            saved = self.store.save_notice(payload)
+            return True, f"Successfully saved notice with {len(saved.get('actions', []))} action(s).", saved
+        except DuplicateNoticeError as e:
+            return True, f"Notice already exists ('{raw_data.get('title')}'). Skipped duplicate creation.", {}
+        except NoticeDataError as e:
+            return False, str(e), {}
+
+    def get_all_notices(self) -> List[Dict[str, Any]]:
+        return self.store.list_notices()
+
+    def get_all_tasks(self, filter_status: str = "all") -> List[Dict[str, Any]]:
+        status = "all" if filter_status == "all" else ("open" if filter_status == "pending" else "done")
+        tasks = self.store.list_tasks(status=status)
+        for t in tasks:
+            t["title"] = t.get("text", "")
+            t["deadline"] = t.get("notice", {}).get("deadline")
+        return tasks
+
+
+    def toggle_task(self, task_id: str) -> Tuple[bool, str]:
+        try:
+            updated = self.store.complete_task(task_id)
+            return True, f"Task marked as completed."
+        except NoticeDataError as e:
+            return False, str(e)
+
+    def search_notices(self, query: str) -> List[Dict[str, Any]]:
+        if not query or not query.strip():
+            return self.store.list_notices()
+        q = _normalise(query)
+        matches = []
+        for n in self.store.list_notices():
+            searchable = " ".join([
+                n.get("title", ""),
+                n.get("venue") or "",
+                n.get("eligibility") or "",
+                " ".join(n.get("actions", []))
+            ])
+            if q in _normalise(searchable):
+                matches.append(n)
+        return matches
+
+    def get_upcoming_deadlines(self, limit: int = 5) -> List[Dict[str, Any]]:
+        open_tasks = self.store.list_tasks(status="open")
+        upcoming = []
+        for t in open_tasks:
+            notice = t.get("notice", {})
+            deadline = notice.get("deadline")
+            if deadline:
+                upcoming.append({
+                    "id": t["id"],
+                    "title": t["text"],
+                    "deadline": deadline,
+                    "notice_title": notice.get("title"),
+                    "priority": "High" if "fee" in t["text"].lower() or "submit" in t["text"].lower() else "Medium"
+                })
+        return upcoming[:limit]
+
+    def get_dashboard_summary(self) -> Dict[str, Any]:
+        s = self.store.summary()
+        return {
+            "total_notices": s["notices"],
+            "total_tasks": s["open_tasks"] + s["completed_tasks"],
+            "pending_tasks": s["open_tasks"],
+            "completed_tasks": s["completed_tasks"],
+            "upcoming_deadlines_count": len(self.get_upcoming_deadlines(limit=10))
+        }
+
+
+# Global app-wide instance
+task_manager = TaskManager()

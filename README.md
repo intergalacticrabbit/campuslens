@@ -43,7 +43,7 @@ cd frontend
 npm install
 ```
 
-## Run locally in development
+## How to run locally in development
 
 Terminal 1, from the repository root:
 
