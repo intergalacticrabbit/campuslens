@@ -22,8 +22,11 @@ import gemma_client
 
 
 # The function the model may ask for. It is fake: it does not look at any real weather.
-def get_weather(city):
-    return f"SAMPLE DATA, not real weather: {city} is 22 C and sunny."
+def get_weather(city:str)->str :
+    """this tools helps get info about city 
+    return type string paramrers are city : required
+    """
+    return f"SAMPLE DATA, not real weather: {city} is rainy."
 
 
 # Step 1: describe the function to the model. It never sees our code, only this description.
