@@ -102,3 +102,36 @@ def test_analysis_rejects_unapproved_upload_type(monkeypatch):
     )
 
     assert response.status_code == 415
+
+
+def test_email_summarize_and_persistence(tmp_path, monkeypatch):
+    monkeypatch.setattr(server, "STORE", NoticeStore(tmp_path / "campus_data.json"))
+    monkeypatch.setattr(
+        server.gemma_client,
+        "ask",
+        lambda _prompt, system=None: (
+            '{"subject": "Fee Payment Deadline", "sender": "Accounts Office", '
+            '"priority": "Urgent", "priority_reason": "Late fee applies tomorrow", '
+            '"summary": "Pay tuition fee before 5 PM", "deadlines": ["Tomorrow 5 PM"], '
+            '"action_items": ["Log in to portal", "Pay fee"]}'
+        ),
+    )
+    client = TestClient(server.app)
+
+    # Summarize email
+    res = client.post("/api/emails/summarize", json={"text": "Please pay tuition fee before tomorrow."})
+    assert res.status_code == 200
+    summary = res.json()["summary"]
+    assert summary["subject"] == "Fee Payment Deadline"
+    assert summary["priority"] == "Urgent"
+
+    # Save email
+    saved = client.post("/api/emails", json=summary)
+    assert saved.status_code == 201
+    assert saved.json()["email"]["priority"] == "Urgent"
+
+    # List emails
+    listed = client.get("/api/emails")
+    assert listed.status_code == 200
+    assert len(listed.json()["emails"]) == 1
+

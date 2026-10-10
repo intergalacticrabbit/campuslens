@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  AlertCircle,
   ArrowDownRight,
   ArrowRight,
   ArrowUpRight,
@@ -12,8 +13,11 @@ import {
   Clock3,
   FileImage,
   FileText,
+  Flame,
   ImagePlus,
+  Inbox,
   LoaderCircle,
+  Mail,
   MapPin,
   Search,
   Settings2,
@@ -53,7 +57,19 @@ type DashboardData = {
   upcoming_tasks: Task[];
 };
 
-type View = "overview" | "analyze" | "tasks" | "notices";
+type EmailSummary = {
+  id: string;
+  subject: string;
+  sender: string;
+  priority: "Urgent" | "High" | "Medium" | "Low";
+  priority_reason: string;
+  summary: string;
+  deadlines: string[];
+  actions: string[];
+  created_at: string;
+};
+
+type View = "overview" | "analyze" | "emails" | "tasks" | "notices";
 type NoticeDraft = Omit<Notice, "id" | "created_at">;
 type NoticeAnalysis = {
   notice: NoticeDraft;
@@ -63,9 +79,31 @@ const EMPTY_SUMMARY: Summary = { notices: 0, open_tasks: 0, completed_tasks: 0 }
 const NAV_ITEMS: { id: View; label: string; icon: typeof BookOpen }[] = [
   { id: "overview", label: "Overview", icon: BookOpen },
   { id: "analyze", label: "Scan a notice", icon: ImagePlus },
+  { id: "emails", label: "Mail Summarizer", icon: Mail },
   { id: "tasks", label: "My tasks", icon: CheckCheck },
   { id: "notices", label: "Notice library", icon: FileText },
 ];
+
+const SAMPLE_EMAILS = [
+  {
+    label: "🚨 Late Fee Penalty (Urgent)",
+    text: "URGENT NOTICE FROM ACADEMIC OFFICE:\nAll students with pending semester dues must clear payments on the ERP portal before 11:59 PM tomorrow, October 11. Failure to comply will result in an immediate late fine of Rs. 2,500 and deregistration from mid-semester examinations. Please download the payment receipt after completing the transaction.",
+  },
+  {
+    label: "📅 Mid-Term Hall Ticket (High)",
+    text: "OFFICE OF ACADEMIC AFFAIRS:\nMid-term examination schedule has been finalized. Hall tickets are now available on the portal. All students must download and print their admit cards before Friday, October 16, and obtain physical verification signature from their respective faculty advisor. Entry into exam halls without signed hall tickets is strictly prohibited.",
+  },
+  {
+    label: "💡 Robotics Hackathon (Medium)",
+    text: "INVITATION FOR TECH FEST:\nThe Robotics and IoT Club is hosting the 2026 Annual Hackathon on October 24 at CC-302. Teams of up to 4 can register through the club portal before October 20. Exciting cash prizes, certificates, and mentorship from industry leaders will be provided.",
+  },
+  {
+    label: "ℹ️ Library Maintenance (Low)",
+    text: "CENTRAL LIBRARY CIRCULAR:\nThe 2nd floor reading hall will remain closed for air conditioning maintenance this Sunday from 9 AM to 1 PM. The digital catalog and ground floor lending counter will operate normally. Thank you for your cooperation.",
+  },
+];
+
+
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
@@ -131,6 +169,17 @@ function App() {
   const [apiStatus, setApiStatus] = useState<"unknown" | "checking" | "connected" | "unavailable">("unknown");
   const uploadRef = useRef<HTMLInputElement>(null);
 
+  // Mail Summarizer State
+  const [emailText, setEmailText] = useState("");
+  const [summarizingEmail, setSummarizingEmail] = useState(false);
+  const [emailDraft, setEmailDraft] = useState<Omit<EmailSummary, "id" | "created_at"> | null>(null);
+  const [emailsList, setEmailsList] = useState<EmailSummary[]>([]);
+  const [emailPriorityFilter, setEmailPriorityFilter] = useState("all");
+  const [savingEmail, setSavingEmail] = useState(false);
+  const [emailError, setEmailError] = useState("");
+  const [loadingEmails, setLoadingEmails] = useState(false);
+
+
   useEffect(() => {
     const url = selectedFile ? URL.createObjectURL(selectedFile) : "";
     setPreviewUrl(url);
@@ -195,6 +244,82 @@ function App() {
       setLoadingTasks(false);
     }
   }
+
+  useEffect(() => {
+    if (view === "emails") {
+      void loadEmails(emailPriorityFilter);
+    }
+  }, [view, emailPriorityFilter]);
+
+  async function loadEmails(priority = "all") {
+    setLoadingEmails(true);
+    try {
+      const data = await request<{ emails: EmailSummary[] }>(`/api/emails?priority=${priority}`);
+      setEmailsList(data.emails || []);
+    } catch {
+      // ignore
+    } finally {
+      setLoadingEmails(false);
+    }
+  }
+
+  async function handleSummarizeEmail() {
+    if (!emailText.trim()) return;
+    setSummarizingEmail(true);
+    setEmailError("");
+    try {
+      const res = await request<{ summary: Omit<EmailSummary, "id" | "created_at"> }>("/api/emails/summarize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: emailText }),
+      });
+      setEmailDraft(res.summary);
+      setToast("Email analyzed & prioritized with Gemma 4!");
+    } catch (err) {
+      setEmailError(err instanceof Error ? err.message : "Failed to analyze email.");
+    } finally {
+      setSummarizingEmail(false);
+    }
+  }
+
+  async function handleSaveEmail() {
+    if (!emailDraft) return;
+    setSavingEmail(true);
+    try {
+      await request("/api/emails", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(emailDraft),
+      });
+      if (emailDraft.actions && emailDraft.actions.length > 0) {
+        try {
+          await request("/api/notices", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              title: `[${emailDraft.priority}] ${emailDraft.subject}`,
+              deadline: emailDraft.deadlines?.[0] || null,
+              venue: emailDraft.sender || "Campus Mail",
+              eligibility: "Student",
+              actions: emailDraft.actions,
+            }),
+          });
+        } catch {
+          // notice might already exist
+        }
+      }
+      setEmailDraft(null);
+      setEmailText("");
+      setToast("Saved to Mail Inbox and added action tasks!");
+      await loadEmails(emailPriorityFilter);
+      await loadDashboard();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to save email.");
+    } finally {
+      setSavingEmail(false);
+    }
+  }
+
 
   async function checkApiStatus() {
     setApiStatus("checking");
@@ -313,9 +438,11 @@ function App() {
   const viewTitle = {
     overview: "Overview",
     analyze: "Scan a notice",
+    emails: "Mail Summarizer",
     tasks: "My tasks",
     notices: "Notice library",
   }[view];
+
 
   return (
     <div className="app-layout">
@@ -631,7 +758,226 @@ function App() {
           </section>
         )}
 
+        {view === "emails" && (
+
+          <section className="page-section page-enter">
+            <div className="page-intro compact-intro">
+              <div>
+                <p className="eyebrow">MAIL & CIRCULAR SUMMARIZER</p>
+                <h1>Cut through the noise. <em>Know what's urgent.</em></h1>
+                <p className="intro-copy">Paste long college emails. Gemma 4 summarizes the key points and classifies urgency.</p>
+              </div>
+              <span className="model-pill"><span className="status-dot" /> Gemma 4 · Priority Ranking</span>
+            </div>
+
+            <div className="mail-grid">
+              <section className="mail-input-card">
+                <div className="card-heading">
+                  <div className="step-title">
+                    <span className="step-number">01</span>
+                    <div>
+                      <h3>Paste campus email or text</h3>
+                      <p>Announcements, circulars, or circular emails</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="sample-prompts">
+                  <span style={{ fontSize: "11px", color: "var(--muted)", alignSelf: "center" }}>Try sample:</span>
+                  {SAMPLE_EMAILS.map((s, idx) => (
+                    <button
+                      key={idx}
+                      className="sample-chip"
+                      onClick={() => {
+                        setEmailText(s.text);
+                        setEmailDraft(null);
+                      }}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+
+                <textarea
+                  className="mail-textarea"
+                  placeholder="Paste email text here, e.g. 'Dear Students, Please be advised that registration for...'"
+                  value={emailText}
+                  onChange={(e) => setEmailText(e.target.value)}
+                />
+
+                {emailError && <p className="form-error" role="alert">{emailError}</p>}
+
+                <button
+                  style={{ marginTop: "14px" }}
+                  className="button button-primary full-button"
+                  onClick={handleSummarizeEmail}
+                  disabled={summarizingEmail || !emailText.trim()}
+                >
+                  {summarizingEmail ? (
+                    <><LoaderCircle className="spin" size={17} /> Summarizing with Gemma 4…</>
+                  ) : (
+                    <><Sparkles size={16} /> Summarize & Rank Urgency</>
+                  )}
+                </button>
+              </section>
+
+              <section className="mail-result-card">
+                <div className="card-heading">
+                  <div className="step-title">
+                    <span className="step-number">02</span>
+                    <div>
+                      <h3>Extracted intelligence</h3>
+                      <p>Priority, deadlines, and actions</p>
+                    </div>
+                  </div>
+                  {emailDraft && (
+                    <span className={`priority-pill priority-${emailDraft.priority.toLowerCase()}`}>
+                      {emailDraft.priority === "Urgent" && <Flame size={12} />}
+                      {emailDraft.priority === "High" && <Clock3 size={12} />}
+                      {emailDraft.priority === "Medium" && <AlertCircle size={12} />}
+                      {emailDraft.priority === "Low" && <Check size={12} />}
+                      {emailDraft.priority}
+                    </span>
+                  )}
+                </div>
+
+                {emailDraft ? (
+                  <div className="extraction-form">
+                    <div className="mail-card-header">
+                      <div>
+                        <strong style={{ fontSize: "15px", display: "block" }}>{emailDraft.subject}</strong>
+                        <span style={{ fontSize: "12px", color: "var(--muted)" }}>From: {emailDraft.sender}</span>
+                      </div>
+                    </div>
+
+                    {emailDraft.priority_reason && (
+                      <div className="priority-reason-box">
+                        <strong>Why {emailDraft.priority}?</strong> {emailDraft.priority_reason}
+                      </div>
+                    )}
+
+                    <div style={{ margin: "12px 0" }}>
+                      <strong style={{ fontSize: "12px", color: "var(--soft-muted)", textTransform: "uppercase" }}>Summary</strong>
+                      <p style={{ margin: "4px 0 0", fontSize: "13px", lineHeight: "1.5" }}>{emailDraft.summary}</p>
+                    </div>
+
+                    {emailDraft.deadlines && emailDraft.deadlines.length > 0 && (
+                      <div>
+                        <strong style={{ fontSize: "12px", color: "var(--soft-muted)", textTransform: "uppercase" }}>Key Dates / Deadlines</strong>
+                        <div className="mail-deadlines-list">
+                          {emailDraft.deadlines.map((d, i) => (
+                            <span key={i} className="mail-deadline-badge">
+                              <CalendarDays size={12} /> {d}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div>
+                      <strong style={{ fontSize: "12px", color: "var(--soft-muted)", textTransform: "uppercase" }}>Action Items ({emailDraft.actions.length})</strong>
+                      {emailDraft.actions.length ? (
+                        <div style={{ marginTop: "6px" }}>
+                          {emailDraft.actions.map((act, i) => (
+                            <div key={i} className="mail-action-item">
+                              <Check size={14} color="#38674e" /> <span>{act}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p style={{ fontSize: "12px", color: "var(--muted)" }}>No direct action items needed.</p>
+                      )}
+                    </div>
+
+                    <button
+                      style={{ marginTop: "16px" }}
+                      className="button button-primary full-button"
+                      onClick={handleSaveEmail}
+                      disabled={savingEmail}
+                    >
+                      {savingEmail ? (
+                        <><LoaderCircle className="spin" size={16} /> Saving…</>
+                      ) : (
+                        <><CheckCheck size={16} /> Save & Add Actions to My Tasks</>
+                      )}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="extraction-empty">
+                    <span className="empty-sparkle"><Inbox size={26} /></span>
+                    <strong>Ready to analyze</strong>
+                    <p>Paste an email on the left and click "Summarize" to see priority ranking and action items.</p>
+                  </div>
+                )}
+              </section>
+            </div>
+
+            <section className="surface-card">
+              <div className="library-toolbar">
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <Inbox size={18} color="#283b2d" />
+                  <strong style={{ fontSize: "15px" }}>Prioritized Mail Feed</strong>
+                </div>
+                <div style={{ display: "flex", gap: "6px" }}>
+                  {["all", "Urgent", "High", "Medium", "Low"].map((p) => (
+                    <button
+                      key={p}
+                      className={`sample-chip ${emailPriorityFilter === p ? "active" : ""}`}
+                      style={emailPriorityFilter === p ? { background: "#283b2d", color: "#fff", borderColor: "#283b2d" } : {}}
+                      onClick={() => setEmailPriorityFilter(p)}
+                    >
+                      {p === "all" ? "All Priorities" : p}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {loadingEmails ? (
+                <LoadingRows />
+              ) : emailsList.length ? (
+                <div style={{ marginTop: "12px" }}>
+                  {emailsList.map((em) => (
+                    <article key={em.id} className="mail-feed-item">
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "10px" }}>
+                        <div>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <span className={`priority-pill priority-${em.priority.toLowerCase()}`}>
+                              {em.priority}
+                            </span>
+                            <strong style={{ fontSize: "14px" }}>{em.subject}</strong>
+                          </div>
+                          <p style={{ margin: "6px 0 0", fontSize: "12px", color: "var(--muted)" }}>
+                            From {em.sender} · {formatDate(em.created_at)}
+                          </p>
+                        </div>
+                        {em.actions.length > 0 && (
+                          <span className="notice-action-count">{em.actions.length} action(s)</span>
+                        )}
+                      </div>
+                      <p style={{ margin: "8px 0 0", fontSize: "13px", lineHeight: "1.5" }}>{em.summary}</p>
+                      {em.deadlines && em.deadlines.length > 0 && (
+                        <div className="mail-deadlines-list">
+                          {em.deadlines.map((d, idx) => (
+                            <span key={idx} className="mail-deadline-badge"><CalendarDays size={12} /> {d}</span>
+                          ))}
+                        </div>
+                      )}
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState
+                  icon={<Mail size={22} />}
+                  title="No emails categorized yet"
+                  text="Paste and analyze an email above to rank and track campus announcements."
+                />
+              )}
+            </section>
+          </section>
+        )}
+
         <footer className="app-footer"><span>CampusLens</span><span>Less searching. More doing.</span><span>Gemma 4 · {new Date().getFullYear()}</span></footer>
+
       </main>
 
       {toast && <div className="toast" role="status"><span className="toast-check"><Check size={14} /></span>{toast}<button onClick={() => setToast("")} aria-label="Dismiss"><X size={14} /></button></div>}

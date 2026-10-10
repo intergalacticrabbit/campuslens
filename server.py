@@ -9,7 +9,12 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 import gemma_client
-from task_manager import NoticeDataError, NoticeStore, parse_notice_response
+from task_manager import (
+    NoticeDataError,
+    NoticeStore,
+    parse_notice_response,
+    parse_email_response,
+)
 
 ROOT = Path(__file__).resolve().parent
 FRONTEND_DIST = ROOT / "frontend" / "dist"
@@ -22,6 +27,19 @@ SYSTEM_RULE = (
     "Use null when a detail is not stated. actions must be a JSON array of short, "
     "specific things a student needs to do."
 )
+
+EMAIL_SYSTEM_RULE = (
+    "You are CampusLens, an intelligent email and announcement assistant for university students. "
+    "Analyze the campus email or announcement text carefully. Extract the core information and assign an objective priority: "
+    "- 'Urgent': Imminent deadline within 48 hours, examination/fee penalty, mandatory academic requirement, or critical emergency. "
+    "- 'High': Important deadline within 7 days, course registration, scholarship, placement interview, or graded coursework. "
+    "- 'Medium': General campus event, club announcement, guest lecture, hostel maintenance, or optional student opportunity. "
+    "- 'Low': Routine newsletter, policy update without immediate action, or informational circular. "
+    "Return strictly one valid JSON object with keys: "
+    "subject (string), sender (string), priority ('Urgent'|'High'|'Medium'|'Low'), priority_reason (string explaining why), "
+    "summary (concise 2-3 sentence overview), deadlines (array of strings), and action_items (array of short specific tasks for the student)."
+)
+
 STORE = NoticeStore()
 app = FastAPI(title="CampusLens API", version="1.0.0")
 
@@ -32,6 +50,21 @@ class NoticeInput(BaseModel):
     venue: str | None = Field(default=None, max_length=1000)
     eligibility: str | None = Field(default=None, max_length=1000)
     actions: list[str] = Field(default_factory=list, max_length=20)
+
+
+class EmailSummarizeInput(BaseModel):
+    text: str = Field(min_length=5, max_length=20000)
+
+
+class EmailInput(BaseModel):
+    subject: str = Field(default="Campus Announcement", max_length=1000)
+    sender: str = Field(default="Campus Office", max_length=1000)
+    priority: str = Field(default="Medium", pattern="^(Urgent|High|Medium|Low)$")
+    priority_reason: str = Field(default="", max_length=1000)
+    summary: str = Field(default="", max_length=2000)
+    deadlines: list[str] = Field(default_factory=list, max_length=10)
+    actions: list[str] = Field(default_factory=list, max_length=20)
+
 
 
 def _store_error(error):
@@ -140,6 +173,44 @@ def complete_task(task_id: str):
         return {"task": STORE.complete_task(task_id)}
     except NoticeDataError as error:
         _store_error(error)
+
+
+@app.post("/api/emails/summarize")
+def summarize_email(payload: EmailSummarizeInput):
+    """Analyze and prioritize an email or announcement using Gemma 4."""
+    try:
+        response = gemma_client.ask(
+            f"Analyze and prioritize this campus email:\n\n{payload.text}",
+            system=EMAIL_SYSTEM_RULE,
+        )
+        return {"summary": parse_email_response(response)}
+    except Exception as error:
+        if isinstance(error, NoticeDataError):
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        raise HTTPException(
+            status_code=502,
+            detail=gemma_client.describe_error(error),
+        ) from error
+
+
+@app.post("/api/emails", status_code=201)
+def save_email(email: EmailInput):
+    """Save a prioritized email summary to persistent campus data."""
+    try:
+        saved = STORE.save_email(email.model_dump())
+        return {"email": saved}
+    except NoticeDataError as error:
+        _store_error(error)
+
+
+@app.get("/api/emails")
+def list_emails(priority: str = Query(default="all")):
+    """List saved emails, sorted by priority (Urgent > High > Medium > Low)."""
+    try:
+        return {"emails": STORE.list_emails(priority_filter=priority)}
+    except NoticeDataError as error:
+        _store_error(error)
+
 
 
 if FRONTEND_DIST.is_dir():
