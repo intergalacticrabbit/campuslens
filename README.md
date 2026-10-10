@@ -4,7 +4,7 @@
 
 ![CampusLens overview dashboard](./campuslens-dashboard.png)
 
-![CampusLens notice scanner](./campuslens-scanner.png)
+![CampusLens notice scanner](./scan_a_notice.jpeg)
 
 ## What it does
 
