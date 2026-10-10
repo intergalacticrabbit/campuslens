@@ -204,3 +204,31 @@ def complete_campus_task(task_id: str):
     success, msg = task_manager.toggle_task(task_id)
     return msg
 
+
+@tool
+def find_notices_by_deadline(before_date: str, max_results: int = 5):
+    """Find campus notices with deadlines on or before a given date, sorted earliest first.
+
+    before_date: cutoff date in YYYY-MM-DD format (inclusive)
+    max_results: maximum number of results from 1 to 20 (default 5)
+    """
+    import sys
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from task_manager import task_manager
+    results = task_manager.find_notices_by_deadline(before_date, max_results=max_results)
+    if not results:
+        return f"No campus notices found with deadlines on or before {before_date}."
+    lines = [f"Found {len(results)} notice(s) with deadlines on or before {before_date}:"]
+    for i, n in enumerate(results, start=1):
+        lines.append(f"{i}. {n.get('title')} | Category: {n.get('category', 'General')} | Deadline: {n.get('deadline')} | Venue: {n.get('venue')}")
+        if n.get('summary'):
+            lines.append(f"   Summary: {n.get('summary')}")
+        if n.get('action_items'):
+            lines.append(f"   Actions: {', '.join(n.get('action_items'))}")
+        if n.get('source_filename'):
+            lines.append(f"   Source: {n.get('source_filename')}")
+    return "\n".join(lines)
+

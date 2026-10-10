@@ -347,6 +347,44 @@ class TaskManager:
                 })
         return upcoming[:limit]
 
+    def find_notices_by_deadline(self, before_date: str, max_results: int = 5) -> List[Dict[str, Any]]:
+        """Return notices with valid deadlines on or before *before_date*, sorted earliest first.
+
+        Args:
+            before_date: Cutoff date in YYYY-MM-DD format (inclusive).
+            max_results: Maximum number of notices to return (1–20, default 5).
+
+        Raises:
+            ValueError: If *before_date* is not a valid YYYY-MM-DD string or
+                        *max_results* is outside the 1–20 range.
+        """
+        if not before_date or not isinstance(before_date, str) or not before_date.strip():
+            raise ValueError("before_date must be a non-empty YYYY-MM-DD string.")
+
+        before_date = before_date.strip()
+        try:
+            cutoff = date.fromisoformat(before_date)
+        except (TypeError, ValueError):
+            raise ValueError(f"Invalid date format '{before_date}'. Use YYYY-MM-DD.")
+
+        if not isinstance(max_results, int) or isinstance(max_results, bool) or not 1 <= max_results <= 20:
+            raise ValueError("max_results must be an integer from 1 to 20.")
+
+        matches = []
+        for n in self.store.list_notices():
+            raw_deadline = n.get("deadline")
+            if not raw_deadline or not isinstance(raw_deadline, str):
+                continue
+            try:
+                dl = date.fromisoformat(raw_deadline)
+            except (TypeError, ValueError):
+                continue
+            if dl <= cutoff:
+                matches.append(n)
+
+        matches.sort(key=lambda x: str(x.get("deadline", "")))
+        return matches[:max_results]
+
     def get_dashboard_summary(self) -> Dict[str, Any]:
         s = self.store.summary()
         return {
