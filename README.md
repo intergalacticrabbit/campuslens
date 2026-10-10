@@ -10,10 +10,13 @@
 
 - A custom React dashboard with an overview, notice scanner, task center, and saved-notice library.
 - Dashboard summary cards link to their related lists; saved notices open a detail view with a shortcut to related tasks.
-- Image upload with side-by-side source preview and editable extraction results.
+- A clickable CampusLens assistant in the sidebar answers general questions and can summarize/prioritize recent saved tasks and notices using Gemma 4.
+- Image and PDF uploads plus pasted notice text, with source preview and editable extraction results.
 - Extracts title, deadline, venue, eligibility, and action items without inventing missing details.
 - Persists notices and tasks in a local JSON file.
 - Searches notices and tasks, filters tasks by status, and tracks completion.
+- Organizes dated tasks in a month calendar, keeps undated items visible, and offers a next-seven-days workload chart and completion summary.
+- Clears completed tasks without removing saved notices or open tasks.
 - Includes an in-app quick guide, API connection check, workspace privacy details, and a saved reduced-motion preference.
 - Uses only `gemma-4-26b-a4b-it` for model inference. Validation, persistence, search, and task operations are Python code.
 
@@ -91,7 +94,7 @@ npm run build
 
 ## Data and privacy
 
-Saved notices and tasks are stored at `data/campus_data.json`. The JSON file is ignored by Git. Uploaded images are temporarily written for model analysis and deleted after the request; saving a notice does not retain the original image. The app listens on `127.0.0.1` by default. Notice images are sent to Google's Gemini API when you request analysis.
+Saved notices and tasks are stored at `data/campus_data.json`. The JSON file is ignored by Git. Uploaded images and PDFs are temporarily written for model analysis and deleted after the request; saving a notice does not retain the original file. PDFs are limited to 25 pages and files to 12 MB. Pasted text and files are sent to Google's Gemini API when you request analysis. When you ask the workspace assistant a question, your question and recent task/notice context are sent to Gemini for a response.
 
 ## Team branches
 
