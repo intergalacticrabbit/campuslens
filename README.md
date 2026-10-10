@@ -1,69 +1,77 @@
-# Gemma 4 Starter
+# CampusLens
 
-Build with **Gemma 4** (model `gemma-4-26b-a4b-it`), an open model from Google, using a free key. This repo has two jobs:
+CampusLens turns campus notice images into clear, editable information and useful follow-up tasks. Upload a notice, let **Gemma 4 (`gemma-4-26b-a4b-it`) through the Gemini API** extract its title, deadline, venue, eligibility, and actions, then review and save the result in a local dashboard.
 
-1. **Learn:** run the numbered scripts in order. Each one adds one idea.
-2. **Build:** copy `app_template/` and `harness/` as the start of your hackathon project.
+## Features
 
-Event: MLH Hack Day, IIT Bhilai. Date: [EVENT DATE]. Help desk: [HELP DESK LOCATION].
+- A calm, single-workspace Gradio dashboard with separate Overview, Analyze notice, and My tasks views.
+- Image upload with structured notice analysis; missing details are left blank instead of guessed.
+- Editable extracted fields, deadline/venue/eligibility display, and action cards.
+- Persistent local JSON storage for notices and tasks.
+- Task search by action, notice title, or venue; open/completed filters and completion tracking.
+- Validation for malformed data, duplicate notices/actions, and invalid stored JSON.
+- The local dashboard binds only to `127.0.0.1`.
 
-## How to run it (5 steps)
+## Requirements
 
-**1. Get a free key.** Go to [aistudio.google.com](https://aistudio.google.com), sign in, and create an API key. Use your own key. Do not share it.
+- Python 3.10 or newer.
+- A Gemini API key from [Google AI Studio](https://aistudio.google.com).
 
-**2. Get this repo.** Click **Use this template** on GitHub, or click **Code > Download ZIP** and unzip it. Open a terminal in the folder.
+## Setup on Windows (PowerShell)
 
-**3. Make a virtual environment and install.** (A virtual environment is a private box for this project's packages.)
+Run these commands from the repository folder:
 
-Windows (PowerShell):
 ```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
-If `python` is not found, try `py -m venv .venv` instead. If your prompt already starts with another name like `(.venv)` before you begin, type `deactivate` first, or you will install into the wrong environment. After the activate line, your prompt should start with `(.venv)`.
-
-If PowerShell says "running scripts is disabled", run `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` and try the activate line again. It only affects this window.
-
-Mac / Linux:
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+Copy-Item .env.example .env
+notepad .env
 ```
 
-**4. Add your key.** Copy `.env.example` to `.env`, open it, and paste your key after `GEMINI_API_KEY=`.
+Paste your own key after `GEMINI_API_KEY=` in `.env`. Keep this file private; `.env` is excluded by `.gitignore`.
 
-Windows: `Copy-Item .env.example .env` then `notepad .env`. Mac / Linux: `cp .env.example .env`.
+## Run the app
 
-Never commit `.env`. It is already in `.gitignore`.
-
-**5. Check it works.**
+```powershell
+python app.py
 ```
-python 00_check_setup.py
+
+Open [http://127.0.0.1:7860](http://127.0.0.1:7860). Analyze a clear notice image, review and correct the extracted details, then save the notice and its action tasks. Use **My tasks** to search/filter tasks and mark one complete.
+
+`app.py` calls `gemma_client.ask_with_image(...)`; `gemma_client.py` uses only `gemma-4-26b-a4b-it` through Google's Gemini API. Never add an API key to source code or a commit.
+
+## Dashboard preview
+
+![CampusLens dashboard](./campuslens-dashboard.png)
+
+## Data and privacy
+
+Notices and tasks are stored in `data/campus_data.json` on this computer. The file is created the first time a notice is saved and is ignored by Git. Avoid saving sensitive personal information. Notice images are sent to Google's Gemini API for analysis when you select **Analyze notice**.
+
+## Tests
+
+Tests do not make a Gemini API call:
+
+```powershell
+python -m pip install -r requirements-dev.txt
+python -m pytest -q
 ```
-Every line should say PASS. If not, see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 
-## The scripts
+They cover JSON response parsing, missing/invalid data, duplicate handling, persistence, search, task completion, and UI callbacks with the API mocked.
 
-| Script | What it teaches |
-|---|---|
-| `00_check_setup.py` | Is your computer ready? One tiny test call. |
-| `01_hello.py` | Your first call to Gemma 4. |
-| `02_system_instruction.py` | Give the model a rule. Same question, different answer. |
-| `03_chat.py` | Chat memory: follow-up questions that work. |
-| `04_image.py` | Send a picture and get text back. |
-| `05_function_calling.py` | The model asks your code to run a function. |
+## Team branches
 
-## Next
+| Member | Branch | Focus |
+|---|---|---|
+| 1 | `feature/gemma-ai` | Image extraction |
+| 2 | `feature/ui` | Gradio interface |
+| 3 | `feature/tasks` | Persistent tasks |
+| 4 | `feature/tools` | Agent tools |
+| 5 | `feature/testing-docs` | Tests and submission documentation |
 
-- **Build your own:** copy [app_template/](app_template/README.md) (a one-screen app).
-- **Add a tool:** see [harness/](harness/README.md) (the loop that lets the model use tools).
-- **Two challenges:** [docs/TWO_CHALLENGES.md](docs/TWO_CHALLENGES.md). One project can enter both.
-- **Submitting:** [docs/SUBMISSION_CHECKLIST.md](docs/SUBMISSION_CHECKLIST.md). Run `python tools/check_submission.py` before you submit.
-- **Stuck?** [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md), [docs/CHEATSHEET.md](docs/CHEATSHEET.md), [docs/IDEAS.md](docs/IDEAS.md).
-- **Using an AI coding tool?** Paste [docs/AI_ASSISTANT_PROMPT.md](docs/AI_ASSISTANT_PROMPT.md) into it first.
+This integrated frontend/backend work is on `feature/ui`. Coordinate shared files and schema changes before merging parallel contributions.
 
 ## License
 
-MIT. See [LICENSE](LICENSE). Keep this file in your project.
+This project is licensed under the MIT License; see [LICENSE](LICENSE).

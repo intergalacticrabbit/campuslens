@@ -5,3 +5,4 @@ __pycache__/
 notes/
 wheelhouse/
 .pytest_cache/
+data/campus_data.json
