@@ -508,3 +508,257 @@ h1 em { color: #557451; font-family: Georgia, serif; font-weight: 400; }
   .calendar-day { font-size: 10px; }
   .assistant-composer textarea { font-size: 11px; }
 }
+
+/* ==========================================================================
+   Campus Mail Summarizer & Urgency Ranking Styles
+   ========================================================================== */
+
+.mail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 22px;
+  margin-bottom: 24px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .mail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.mail-input-card,
+.mail-result-card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+}
+
+.sample-prompts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  margin: 14px 0 16px;
+  padding: 10px 12px;
+  background: #f1f2ea;
+  border-radius: 9px;
+  border: 1px solid #e2e4d8;
+}
+
+.sample-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border: 1px solid #d4d8cc;
+  border-radius: 20px;
+  background: #ffffff;
+  color: #37463a;
+  font-size: 11.5px;
+  font-weight: 550;
+  cursor: pointer;
+  transition: all 160ms ease;
+  line-height: 1.2;
+}
+
+.sample-chip:hover {
+  border-color: #283b2d;
+  background: #eaf0e6;
+  color: #1f3424;
+  transform: translateY(-1px);
+}
+
+.mail-textarea {
+  width: 100%;
+  min-height: 220px;
+  padding: 14px 16px;
+  border: 1px solid #d7dbce;
+  border-radius: 8px;
+  background: #fafaf6;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+  box-sizing: border-box;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.mail-textarea:focus {
+  outline: none;
+  background: #ffffff;
+  border-color: #38674e;
+  box-shadow: 0 0 0 3px rgba(56, 103, 78, 0.15);
+}
+
+.full-button {
+  width: 100%;
+  padding: 12px 18px;
+  font-size: 13px;
+  font-weight: 650;
+  border-radius: 8px;
+}
+
+.priority-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 14px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+.priority-urgent {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+}
+
+.priority-high {
+  background: #ffedd5;
+  color: #c2410c;
+  border: 1px solid #fdba74;
+}
+
+.priority-medium {
+  background: #e0e7ff;
+  color: #3730a3;
+  border: 1px solid #a5b4fc;
+}
+
+.priority-low {
+  background: #e6eee3;
+  color: #234532;
+  border: 1px solid #b8d0aa;
+}
+
+.priority-reason-box {
+  margin: 12px 0;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: #fcf6e8;
+  border-left: 4px solid #dfc36e;
+  font-size: 12px;
+  color: #55441e;
+  line-height: 1.5;
+}
+
+.priority-reason-box strong {
+  color: #3d2f0f;
+  margin-right: 4px;
+}
+
+.mail-card-header {
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 12px;
+}
+
+.mail-deadlines-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+  margin-bottom: 12px;
+}
+
+.mail-deadline-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  background: #fbf5e7;
+  border: 1px solid #e8dbb0;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #634d19;
+}
+
+.mail-action-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 11px;
+  margin-bottom: 5px;
+  background: #f7faf5;
+  border-radius: 6px;
+  border: 1px solid #e3ebe0;
+  font-size: 12.5px;
+  color: #2b3b2f;
+  line-height: 1.45;
+}
+
+.mail-feed-item {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line);
+  transition: background 150ms ease;
+}
+
+.mail-feed-item:last-child {
+  border-bottom: none;
+}
+
+.mail-feed-item:hover {
+  background: #fbfbf6;
+}
+
+/* Quick Add Task Bar in Task Center */
+.quick-task-bar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 14px 18px;
+  background: #f3f5ee;
+  border-bottom: 1px solid var(--line);
+  border-radius: 12px 12px 0 0;
+}
+
+@media (max-width: 720px) {
+  .quick-task-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+.quick-task-input {
+  flex: 1;
+  min-height: 38px;
+  padding: 8px 14px;
+  border: 1px solid #d4d8cc;
+  border-radius: 7px;
+  background: #fff;
+  font-size: 13px;
+  color: var(--ink);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.quick-task-input:focus {
+  outline: none;
+  border-color: #38674e;
+  box-shadow: 0 0 0 3px rgba(56, 103, 78, 0.14);
+}
+
+.quick-task-date {
+  min-height: 38px;
+  padding: 6px 10px;
+  border: 1px solid #d4d8cc;
+  border-radius: 7px;
+  background: #fff;
+  font-size: 12px;
+  color: #4b584e;
+}
+
+.quick-task-btn {
+  white-space: nowrap;
+  padding: 0 16px;
+  min-height: 38px;
+}

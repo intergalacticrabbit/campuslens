@@ -320,6 +320,51 @@ class NoticeStore:
             "completed_tasks": completed,
         }
 
+    def add_task(self, text, deadline=None, notice_title=None, priority="Medium"):
+        """Add a student task and link to a notice or personal reminders notice."""
+        clean_text = _clean_text(text, "task")
+        if not clean_text:
+            raise NoticeDataError("Task text is required.")
+        with self._lock:
+            data = self._read()
+            target_notice = None
+            default_title = notice_title or "Personal Tasks & Student Reminders"
+            for n in data["notices"]:
+                if n.get("title") == default_title:
+                    target_notice = n
+                    break
+            if not target_notice:
+                notice_id = uuid.uuid4().hex
+                target_notice = {
+                    "id": notice_id,
+                    "title": default_title,
+                    "deadline": deadline,
+                    "venue": None,
+                    "eligibility": "Self",
+                    "actions": [clean_text],
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                }
+                data["notices"].append(target_notice)
+            else:
+                if clean_text not in target_notice.get("actions", []):
+                    target_notice.setdefault("actions", []).append(clean_text)
+
+            task_id = uuid.uuid4().hex
+            created_at = datetime.now(timezone.utc).isoformat()
+            new_task = {
+                "id": task_id,
+                "notice_id": target_notice["id"],
+                "text": clean_text,
+                "completed": False,
+                "created_at": created_at,
+            }
+            data["tasks"].append(new_task)
+            self._write(data)
+            return {
+                **new_task,
+                "priority": priority,
+                "notice": target_notice,
+            }
 
     def save_email(self, email):
         """Save a summarized email to persistent store."""
@@ -412,6 +457,9 @@ class TaskManager:
             t["title"] = t.get("text", "")
             t["deadline"] = t.get("notice", {}).get("deadline")
         return tasks
+
+    def add_task(self, title: str, deadline: Optional[str] = None, priority: str = "Medium") -> Dict[str, Any]:
+        return self.store.add_task(text=title, deadline=deadline, priority=priority)
 
 
     def toggle_task(self, task_id: str) -> Tuple[bool, str]:

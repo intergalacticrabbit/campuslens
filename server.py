@@ -57,6 +57,12 @@ class NoticeInput(BaseModel):
     actions: list[str] = Field(default_factory=list, max_length=20)
 
 
+class TaskCreateInput(BaseModel):
+    title: str = Field(min_length=1, max_length=1000)
+    deadline: str | None = Field(default=None, max_length=100)
+    priority: str = Field(default="Medium", max_length=50)
+
+
 def _validate_pdf(contents: bytes):
     try:
         from pypdf import PdfReader
@@ -94,6 +100,25 @@ class AssistantTurn(BaseModel):
 class AssistantInput(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
     history: list[AssistantTurn] = Field(default_factory=list, max_length=8)
+
+
+class EmailSummarizeInput(BaseModel):
+    text: str = Field(default="", max_length=MAX_TEXT_LENGTH)
+    email_text: str = Field(default="", max_length=MAX_TEXT_LENGTH)
+
+    @property
+    def content(self) -> str:
+        return (self.text or self.email_text).strip()
+
+
+class EmailInput(BaseModel):
+    subject: str = Field(default="Campus Announcement", max_length=1000)
+    sender: str = Field(default="Campus Office", max_length=1000)
+    priority: str = Field(default="Medium", pattern="^(Urgent|High|Medium|Low)$")
+    priority_reason: str = Field(default="", max_length=1000)
+    summary: str = Field(default="", max_length=2000)
+    deadlines: list[str] = Field(default_factory=list, max_length=10)
+    actions: list[str] = Field(default_factory=list, max_length=20)
 
 
 
@@ -308,6 +333,19 @@ def list_tasks(
         _store_error(error)
 
 
+@app.post("/api/tasks", status_code=201)
+def create_task(payload: TaskCreateInput):
+    try:
+        created = STORE.add_task(
+            text=payload.title,
+            deadline=payload.deadline,
+            priority=payload.priority,
+        )
+        return {"task": created}
+    except NoticeDataError as error:
+        _store_error(error)
+
+
 @app.patch("/api/tasks/{task_id}/complete")
 def complete_task(task_id: str):
     try:
@@ -320,6 +358,47 @@ def complete_task(task_id: str):
 def delete_completed_tasks():
     try:
         return {"deleted": STORE.delete_completed_tasks()}
+    except NoticeDataError as error:
+        _store_error(error)
+
+
+@app.post("/api/emails/summarize")
+def summarize_email(payload: EmailSummarizeInput):
+    """Analyze and prioritize an email or announcement using Gemma 4."""
+    content = payload.content
+    if not content:
+        raise HTTPException(status_code=422, detail="Email text cannot be empty.")
+    try:
+        response = gemma_client.ask(
+            f"Analyze and prioritize this campus email:\n\n{content}",
+            system=EMAIL_SYSTEM_RULE,
+        )
+        parsed = parse_email_response(response)
+        return {"email": parsed, "summary": parsed}
+    except Exception as error:
+        if isinstance(error, NoticeDataError):
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        raise HTTPException(
+            status_code=502,
+            detail=gemma_client.describe_error(error),
+        ) from error
+
+
+@app.post("/api/emails", status_code=201)
+def save_email(email: EmailInput):
+    """Save a prioritized email summary to persistent campus data."""
+    try:
+        saved = STORE.save_email(email.model_dump())
+        return {"email": saved}
+    except NoticeDataError as error:
+        _store_error(error)
+
+
+@app.get("/api/emails")
+def list_emails(priority: str = Query(default="all")):
+    """List saved emails, sorted by priority (Urgent > High > Medium > Low)."""
+    try:
+        return {"emails": STORE.list_emails(priority_filter=priority)}
     except NoticeDataError as error:
         _store_error(error)
 

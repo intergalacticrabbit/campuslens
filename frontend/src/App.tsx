@@ -22,6 +22,7 @@ import {
   Mail,
   MapPin,
   MessageCircle,
+  Plus,
   Search,
   Send,
   Settings2,
@@ -243,6 +244,9 @@ function App() {
   const [savingEmail, setSavingEmail] = useState(false);
   const [emailError, setEmailError] = useState("");
   const [loadingEmails, setLoadingEmails] = useState(false);
+  const [quickTaskText, setQuickTaskText] = useState("");
+  const [quickTaskDeadline, setQuickTaskDeadline] = useState("");
+  const [creatingTask, setCreatingTask] = useState(false);
 
 
   useEffect(() => {
@@ -265,6 +269,12 @@ function App() {
     }, 180);
     return () => window.clearTimeout(debounce);
   }, [view, query, taskStatus, taskView]);
+
+  useEffect(() => {
+    if (view === "emails") {
+      void loadEmails(emailPriorityFilter);
+    }
+  }, [view, emailPriorityFilter]);
 
   useEffect(() => {
     if (!toast) return;
@@ -449,7 +459,7 @@ function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(draft),
       });
-      await loadDashboard();
+      await Promise.all([loadDashboard(), loadTasks(), loadCalendarTasks()]);
       setDraft(null);
       setSelectedFile(null);
       setNoticeText("");
@@ -486,6 +496,114 @@ function App() {
     } catch (error) {
       setPageError(error instanceof Error ? error.message : "Could not remove completed tasks.");
       setDialog(null);
+    }
+  }
+
+  async function loadEmails(priority = emailPriorityFilter) {
+    setLoadingEmails(true);
+    try {
+      const data = await request<{ emails: EmailSummary[] }>(`/api/emails?priority=${priority}`);
+      setEmailsList(data.emails || []);
+    } catch {
+      // Ignore
+    } finally {
+      setLoadingEmails(false);
+    }
+  }
+
+  async function handleSummarizeEmail() {
+    if (!emailText.trim()) return;
+    setSummarizingEmail(true);
+    setEmailError("");
+    setEmailDraft(null);
+    try {
+      const res = await request<{ email: Omit<EmailSummary, "id" | "created_at"> }>("/api/emails/summarize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email_text: emailText.trim() }),
+      });
+      setEmailDraft(res.email);
+      setToast("Email summarized & prioritized with Gemma 4!");
+    } catch (err) {
+      setEmailError(err instanceof Error ? err.message : "Could not summarize email.");
+    } finally {
+      setSummarizingEmail(false);
+    }
+  }
+
+  async function handleSaveEmail() {
+    if (!emailDraft) return;
+    setSavingEmail(true);
+    try {
+      await request<{ email: EmailSummary }>("/api/emails", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(emailDraft),
+      });
+
+      // Also convert actions into a campus notice so tasks appear in My Tasks
+      if (emailDraft.actions && emailDraft.actions.length > 0) {
+        try {
+          await request<{ notice: Notice }>("/api/notices", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              title: `[Email] ${emailDraft.subject}`,
+              deadline: emailDraft.deadlines[0] || null,
+              venue: "Online / Email",
+              eligibility: "All students",
+              actions: emailDraft.actions,
+            }),
+          });
+        } catch {
+          // If a notice with this title already exists, save with timestamp so action items are always created
+          const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          await request<{ notice: Notice }>("/api/notices", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              title: `[Email] ${emailDraft.subject} (${time})`,
+              deadline: emailDraft.deadlines[0] || null,
+              venue: "Online / Email",
+              eligibility: "All students",
+              actions: emailDraft.actions,
+            }),
+          });
+        }
+      }
+
+      setToast("Saved to Email Library & Tasks added!");
+      setEmailDraft(null);
+      setEmailText("");
+      await Promise.all([loadEmails(), loadDashboard(), loadTasks(), loadCalendarTasks()]);
+    } catch (err) {
+      setEmailError(err instanceof Error ? err.message : "Could not save email.");
+    } finally {
+      setSavingEmail(false);
+    }
+  }
+
+  async function handleCreateQuickTask(e: React.FormEvent) {
+    e.preventDefault();
+    if (!quickTaskText.trim()) return;
+    setCreatingTask(true);
+    try {
+      await request<{ task: Task }>("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: quickTaskText.trim(),
+          deadline: quickTaskDeadline.trim() || null,
+        }),
+      });
+      setQuickTaskText("");
+      setQuickTaskDeadline("");
+      setToast("New task added!");
+      await Promise.all([loadDashboard(), loadTasks(), loadCalendarTasks()]);
+    } catch (err) {
+      setPageError(err instanceof Error ? err.message : "Could not add task.");
+    } finally {
+      setCreatingTask(false);
     }
   }
 
@@ -921,6 +1039,30 @@ function App() {
               <div className="task-summary-chip"><CheckCheck size={16} /> {dashboard.summary.open_tasks} open</div>
             </div>
             <section className="surface-card task-manager-card">
+              <form className="quick-task-bar" onSubmit={handleCreateQuickTask}>
+                <input
+                  className="quick-task-input"
+                  value={quickTaskText}
+                  onChange={(e) => setQuickTaskText(e.target.value)}
+                  placeholder="+ Add a new task, assignment, or campus reminder..."
+                  disabled={creatingTask}
+                />
+                <input
+                  type="date"
+                  className="quick-task-date"
+                  value={quickTaskDeadline}
+                  onChange={(e) => setQuickTaskDeadline(e.target.value)}
+                  title="Due date (optional)"
+                  disabled={creatingTask}
+                />
+                <button
+                  type="submit"
+                  className="button button-primary quick-task-btn"
+                  disabled={creatingTask || !quickTaskText.trim()}
+                >
+                  <Plus size={15} /> Add Task
+                </button>
+              </form>
               <div className="task-manager-toolbar">
                 <label className="search-box"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search tasks, notices, or venues" /></label>
                 <div className="task-toolbar-actions">
