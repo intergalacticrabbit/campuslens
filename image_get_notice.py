@@ -45,7 +45,8 @@ Use this exact shape:
 Rules: copy dates exactly as written. Never guess a date. If something is missing, use null or an empty list and add a note to uncertainties."""
 
 
-def extract_notice(image_path: str) -> dict:
+def extract_notice(image_path: str, PROMPT:str) -> dict:
+    
     raw = gemma_client.ask_with_image(image_path, PROMPT)
     cleaned = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
     try:
